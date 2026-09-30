@@ -10,6 +10,7 @@ from app.modules.customers.router import router as customers_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.khata.router import router as khata_router
 from app.modules.orders.router import router as orders_router
+from app.modules.vision.router import router as vision_router
 
 API_PREFIX = "/api/v1"
 # Reserved for the Shop phase: unauthenticated storefront routes under
@@ -32,5 +33,6 @@ for router in (
     billing_router,
     orders_router,
     khata_router,
+    vision_router,
 ):
     api_router.include_router(router)

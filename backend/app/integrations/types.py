@@ -10,6 +10,16 @@ class IntegrationNotConfigured(RuntimeError):
 
 
 @dataclass(frozen=True)
+class BoundingBox:
+    """Where an item was seen, normalized to the image size (0..1, origin top-left)."""
+
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+@dataclass(frozen=True)
 class RecognizedItem:
     """A billing line proposed by any input channel, before product resolution.
 
@@ -22,4 +32,5 @@ class RecognizedItem:
     product_id: uuid.UUID | None = None
     barcode: str | None = None
     name_hint: str | None = None
-    confidence: float | None = None
+    confidence: float | None = None  # 0..1, as reported by the provider
+    bbox: BoundingBox | None = None

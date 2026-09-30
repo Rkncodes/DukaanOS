@@ -128,6 +128,20 @@ def add_recognized_items(
     return RecognizedItemsResult(cart=cart, unresolved=unresolved)
 
 
+def add_confirmed_items(
+    db: Session, ctx: TenantContext, cart_id: uuid.UUID, items: list[RecognizedItem]
+) -> Cart:
+    """Items the merchant has confirmed (e.g. after a photo scan). All or nothing: any item
+    that does not resolve to this merchant's product fails the request (caller does not commit)."""
+    result = add_recognized_items(db, ctx, cart_id, items)
+    if result.unresolved:
+        raise NotFound(
+            "Product not found",
+            details={"unresolved": [str(i.product_id or i.barcode or i.name_hint) for i in result.unresolved]},
+        )
+    return result.cart
+
+
 def _get_item(cart: Cart, item_id: uuid.UUID) -> CartItem:
     item = next((i for i in cart.items if i.id == item_id), None)
     if item is None:

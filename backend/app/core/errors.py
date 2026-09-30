@@ -28,7 +28,7 @@ class ErrorResponse(BaseModel):
 
 # Documented on every /api/v1 route so generated clients get typed errors.
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
-    status: {"model": ErrorResponse} for status in (400, 401, 404, 409, 422, 500)
+    status: {"model": ErrorResponse} for status in (400, 401, 404, 409, 413, 422, 500, 503)
 }
 
 

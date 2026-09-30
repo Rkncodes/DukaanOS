@@ -3,6 +3,7 @@ import uuid
 from fastapi import APIRouter, status
 
 from app.core.db import DbSession
+from app.integrations.types import RecognizedItem
 from app.modules.auth.deps import Tenant
 from app.modules.billing import service
 from app.modules.billing.schemas import (
@@ -12,6 +13,7 @@ from app.modules.billing.schemas import (
     CartRead,
     CartUpdate,
     CheckoutRequest,
+    ConfirmedItemsAdd,
 )
 from app.modules.orders import service as orders
 from app.modules.orders.schemas import OrderRead
@@ -45,6 +47,14 @@ def add_item(cart_id: uuid.UUID, data: CartItemAdd, db: DbSession, ctx: Tenant) 
     else:
         assert data.product_id is not None
         cart = service.add_item(db, ctx, cart_id, data.product_id, data.quantity, data.source)
+    db.commit()
+    return cart
+
+
+@router.post("/{cart_id}/recognized-items")
+def add_confirmed_items(cart_id: uuid.UUID, data: ConfirmedItemsAdd, db: DbSession, ctx: Tenant) -> CartRead:
+    items = [RecognizedItem(source=data.source, product_id=i.product_id, quantity=i.quantity) for i in data.items]
+    cart = service.add_confirmed_items(db, ctx, cart_id, items)
     db.commit()
     return cart
 

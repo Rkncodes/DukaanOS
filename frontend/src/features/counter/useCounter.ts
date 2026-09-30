@@ -81,6 +81,17 @@ export function useCounter() {
     onSuccess: onCart,
   });
 
+  /** Merchant-confirmed recognized items (vision today) into the same cart. */
+  const addConfirmed = useMutation({
+    mutationFn: async (body: Schemas["ConfirmedItemsAdd"]) => {
+      const id = await ensureCartId();
+      return unwrap(
+        api.POST("/api/v1/carts/{cart_id}/recognized-items", { params: { path: { cart_id: id } }, body }),
+      );
+    },
+    onSuccess: onCart,
+  });
+
   const setQuantity = useMutation({
     mutationFn: ({ itemId, quantity }: { itemId: string; quantity: string }) =>
       unwrap(
@@ -131,5 +142,14 @@ export function useCounter() {
     },
   });
 
-  return { cart: cart.data ?? null, cartLoading: cart.isFetching, addItem, setQuantity, removeItem, setCustomer, checkout };
+  return {
+    cart: cart.data ?? null,
+    cartLoading: cart.isFetching,
+    addItem,
+    addConfirmed,
+    setQuantity,
+    removeItem,
+    setCustomer,
+    checkout,
+  };
 }

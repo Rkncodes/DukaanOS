@@ -32,6 +32,18 @@ class CartItemAdd(BaseModel):
         return self
 
 
+class ConfirmedItem(BaseModel):
+    product_id: uuid.UUID
+    quantity: Quantity = Decimal(1)
+
+
+class ConfirmedItemsAdd(BaseModel):
+    """Recognized items the merchant confirmed (vision now; voice/parchi later)."""
+
+    source: InputSource = InputSource.VISION
+    items: list[ConfirmedItem] = Field(min_length=1, max_length=50)
+
+
 class CartItemUpdate(BaseModel):
     quantity: Quantity
 
