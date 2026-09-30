@@ -1,0 +1,27 @@
+[project]
+name = "dukaanos-backend"
+version = "0.1.0"
+description = "DukaanOS backend API"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.20.0",
+    "fastapi[standard]>=0.142.0",
+    "psycopg[binary]>=3.3.6",
+    "pwdlib[argon2]>=0.3.1",
+    "pydantic-settings>=2.15.0",
+    "pyjwt>=2.15.1",
+    "sqlalchemy>=2.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = [
+    # starlette.testclient suggests httpx2; httpx still works fine for tests
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
+]
