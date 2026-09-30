@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.enums import PaymentMethod
 from app.core.errors import DomainValidationError
-from app.core.tenancy import TenantContext, get_owned
+from app.core.tenancy import TenantContext, get_owned, scoped
 from app.modules.customers.models import Customer
 from app.modules.orders.models import Order
 from app.modules.payments.models import Payment
@@ -43,3 +43,8 @@ def record_payment(
     db.add(payment)
     db.flush()
     return payment
+
+
+def list_for_order(db: Session, ctx: TenantContext, order_id: uuid.UUID) -> list[Payment]:
+    stmt = scoped(Payment, ctx).where(Payment.order_id == order_id).order_by(Payment.created_at)
+    return list(db.scalars(stmt))

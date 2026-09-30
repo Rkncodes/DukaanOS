@@ -14,10 +14,15 @@ from app.core.errors import DomainValidationError
 from app.core.tenancy import TenantContext, get_owned, scoped
 from app.modules.billing import service as billing
 from app.modules.billing.schemas import CheckoutRequest
+from app.modules.customers import service as customers
+from app.modules.customers.schemas import CustomerRead
 from app.modules.inventory import service as inventory
 from app.modules.khata import service as khata
+from app.modules.khata.schemas import KhataEntryRead
 from app.modules.orders.models import Order, OrderItem
+from app.modules.orders.schemas import BillRead, OrderRead
 from app.modules.payments import service as payments
+from app.modules.payments.schemas import PaymentRead
 
 
 def checkout(db: Session, ctx: TenantContext, cart_id: uuid.UUID, data: CheckoutRequest) -> Order:
@@ -99,3 +104,16 @@ def list_orders(
 
 def get_order(db: Session, ctx: TenantContext, order_id: uuid.UUID) -> Order:
     return get_owned(db, Order, order_id, ctx)
+
+
+def get_bill(db: Session, ctx: TenantContext, order_id: uuid.UUID) -> BillRead:
+    order = get_order(db, ctx, order_id)
+    customer = customers.get_customer(db, ctx, order.customer_id) if order.customer_id else None
+    khata_entry = khata.credit_for_order(db, ctx, order.id)
+    return BillRead(
+        order=OrderRead.model_validate(order),
+        customer=CustomerRead.model_validate(customer) if customer else None,
+        payments=[PaymentRead.model_validate(p) for p in payments.list_for_order(db, ctx, order.id)],
+        khata_entry=KhataEntryRead.model_validate(khata_entry) if khata_entry else None,
+        customer_balance=khata.get_balance(db, ctx, customer.id) if customer else None,
+    )

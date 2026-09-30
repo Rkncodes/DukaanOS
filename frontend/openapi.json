@@ -2776,6 +2776,99 @@
         }
       }
     },
+    "/api/v1/orders/{order_id}/bill": {
+      "get": {
+        "tags": [
+          "orders"
+        ],
+        "summary": "Get Bill",
+        "operationId": "get_bill_api_v1_orders__order_id__bill_get",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Order Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
     "/api/v1/khata/balances": {
       "get": {
         "tags": [
@@ -3175,6 +3268,61 @@
   },
   "components": {
     "schemas": {
+      "BillRead": {
+        "properties": {
+          "order": {
+            "$ref": "#/components/schemas/OrderRead"
+          },
+          "customer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CustomerRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "payments": {
+            "items": {
+              "$ref": "#/components/schemas/PaymentRead"
+            },
+            "type": "array",
+            "title": "Payments"
+          },
+          "khata_entry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KhataEntryRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customer_balance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Balance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "customer",
+          "payments",
+          "khata_entry",
+          "customer_balance"
+        ],
+        "title": "BillRead",
+        "description": "An order plus how it was settled: what the counter shows (and prints) after checkout."
+      },
       "CartCreate": {
         "properties": {
           "channel": {
@@ -4102,6 +4250,92 @@
           "card"
         ],
         "title": "PaymentMethod"
+      },
+      "PaymentRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
+          },
+          "customer_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Id"
+          },
+          "amount": {
+            "type": "string",
+            "title": "Amount"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentRecordStatus"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "external_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Reference"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "order_id",
+          "customer_id",
+          "amount",
+          "method",
+          "status",
+          "provider",
+          "external_reference",
+          "created_at"
+        ],
+        "title": "PaymentRead"
+      },
+      "PaymentRecordStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "succeeded",
+          "failed",
+          "refunded"
+        ],
+        "title": "PaymentRecordStatus"
       },
       "PaymentStatus": {
         "type": "string",

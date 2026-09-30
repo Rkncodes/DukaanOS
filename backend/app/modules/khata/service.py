@@ -84,6 +84,14 @@ def list_entries(db: Session, ctx: TenantContext, customer_id: uuid.UUID) -> lis
     return list(db.scalars(stmt))
 
 
+def credit_for_order(db: Session, ctx: TenantContext, order_id: uuid.UUID) -> KhataEntry | None:
+    """The udhaar entry created when a sale was put on khata, if any."""
+    stmt = scoped(KhataEntry, ctx).where(
+        KhataEntry.order_id == order_id, KhataEntry.type == KhataEntryType.CREDIT
+    )
+    return db.scalars(stmt).first()
+
+
 def get_balance(db: Session, ctx: TenantContext, customer_id: uuid.UUID) -> Decimal:
     get_owned(db, Customer, customer_id, ctx)
     total = db.scalar(
