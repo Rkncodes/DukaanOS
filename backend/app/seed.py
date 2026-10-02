@@ -56,6 +56,14 @@ PRODUCTS = [
     ("Surf Excel Easy Wash 1kg", "Household", "140", "122.00", 18, "pcs"),
     ("Dettol Antiseptic Liquid 125ml", "Personal Care", "75", "64.00", 15, "pcs"),
     ("Colgate Strong Teeth 200g", "Personal Care", "110", "94.00", 25, "pcs"),
+    ("Cadbury 5 Star 40g", "Biscuits & Chocolates", "20", "17.00", 40, "pcs"),
+    ("Britannia Treat Croissant 45g", "Biscuits & Chocolates", "30", "25.00", 30, "pcs"),
+    ("Doritos Nacho Cheese 44g", "Snacks", "20", "16.50", 40, "pcs"),
+    ("Parle Hide & Seek", "Biscuits & Chocolates", "10", "8.50", 40, "pcs"),
+    ("Maggi 2-Minute Noodles 35g", "Instant Food", "7", "6.00", 60, "pcs"),
+    ("Lotte Choco Pie 28g", "Biscuits & Chocolates", "10", "8.50", 40, "pcs"),
+    ("Coke", "Beverages", "20", "16.50", 36, "pcs"),
+    ("Maliban Choco Wafer 30g", "Biscuits & Chocolates", "10", "8.50", 40, "pcs"),
 ]
 
 CUSTOMERS = [

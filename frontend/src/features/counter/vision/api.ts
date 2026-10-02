@@ -27,3 +27,15 @@ export function recognizeFrame(frame: Blob, sequence: number) {
     }),
   );
 }
+
+/** Save a photo of a product's packaging as a reference for Vision (only an embedding + thumbnail are kept). */
+export function addReferencePhoto(productId: string, photo: Blob) {
+  return unwrap(
+    api.POST("/api/v1/vision/products/{product_id}/reference-images", {
+      params: { path: { product_id: productId } },
+      body: { image: photo as unknown as string },
+      bodySerializer: (body) =>
+        form({ image: new File([body.image as unknown as Blob], "reference.jpg", { type: "image/jpeg" }) }),
+    }),
+  );
+}

@@ -1,0 +1,6 @@
+{
+  "_comment": "Generic prompts for the real vision provider. It contains NO products: the classes are the logged-in merchant's active catalog product names, inserted into class_templates at request time. other_prompts compete with every product so packets that are not in the catalog stay unknown instead of being forced onto one.",
+  "locate_prompts": ["a snack packet", "a product package", "a bottle or container"],
+  "class_templates": ["a photo of {name}", "a {name} product package"],
+  "other_prompts": ["a packet of some other snack", "a grocery product package", "a person's hand", "a background object"]
+}

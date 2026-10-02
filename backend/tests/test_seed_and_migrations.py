@@ -40,7 +40,7 @@ def test_seed_builds_demo_merchant_via_services(db, make_client):
     res = client.post("/api/v1/auth/login", json={"email": seed.DEMO_EMAIL, "password": seed.DEMO_PASSWORD})
     assert res.status_code == 200
     products = client.get("/api/v1/products").json()
-    assert len(products) == 15
+    assert len(products) == 23
     assert all(len(p["barcode"]) == 13 for p in products)
 
 

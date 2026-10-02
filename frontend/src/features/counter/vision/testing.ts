@@ -28,7 +28,9 @@ export const coke = P("p-coke", "Coke 750ml", "40.00");
 export const pepsi = P("p-pepsi", "Pepsi 750ml", "40.00");
 export const parle = P("p-parle", "Parle-G Biscuits 250g", "25.00");
 export const colgate = P("p-colgate", "Colgate Strong Teeth 200g", "110.00");
-export const PRODUCTS = [colgate, coke, maggi, parle, pepsi];
+export const lays = P("p-lays", "Lays Classic Salted 52g", "20.00");
+export const dairy = P("p-dairy", "Dairy Milk Chocolate 50g", "50.00");
+export const PRODUCTS = [colgate, coke, dairy, lays, maggi, parle, pepsi];
 
 export const det = (
   id: string,
@@ -49,9 +51,10 @@ export const det = (
     ...extra,
   }) satisfies Schemas["Detection"];
 
+/** A photo result as the real provider returns it, already matched to PRODUCTS (test data only). */
 export const VISION_RESULT: Schemas["VisionResult"] = {
-  provider: "mock",
-  is_mock: true,
+  provider: "local-cv (owl-vit + clip)",
+  is_mock: false,
   detections: [
     det("d0", "Maggi 2-Minute Noodles", "matched", { product: maggi, quantity: "2.000", confidence: 0.94 }),
     det("d1", "Coke 750ml", "matched", { product: coke }),
@@ -61,24 +64,26 @@ export const VISION_RESULT: Schemas["VisionResult"] = {
   ],
 };
 
-/** Mirrors the backend MockLiveRecognizer scenes (already matched against PRODUCTS). */
-export const LIVE_SCENES: Schemas["Detection"][][] = [
-  [det("d0", "Maggi 2-Minute Noodles", "matched", { product: maggi, confidence: 0.94 })],
-  [
-    det("d0", "Maggi 2-Minute Noodles", "matched", { product: maggi, quantity: "2.000", confidence: 0.94 }),
-    det("d1", "Coke 750ml", "matched", { product: coke, confidence: 0.91, bbox: { x: 0.34, y: 0.12, width: 0.12, height: 0.55 } }),
-  ],
-  [
-    det("d0", "Maggi 2-Minute Noodles", "matched", { product: maggi, quantity: "2.000" }),
-    det("d1", "Coke 750ml", "matched", { product: coke }),
-    det("d2", "Cold drink 750ml", "ambiguous", { candidates: [coke, pepsi] }),
-    det("d3", "Parle-G Biscuits", "low_confidence", { candidates: [parle], confidence: 0.41 }),
-  ],
-  [
-    det("d0", "Coke 750ml", "matched", { product: coke }),
-    det("d1", "Red toothpaste tube", "unmatched", { confidence: 0.66 }),
-  ],
-];
+const box = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+
+/** Live detections as the backend returns them, already matched to PRODUCTS (test data only). */
+export const LIVE = {
+  maggi: det("d0", "Maggi 2-Minute Noodles", "matched", { product: maggi, confidence: 0.94, bbox: box(0.06, 0.3, 0.22, 0.3) }),
+  maggi2: det("d0", "Maggi 2-Minute Noodles", "matched", {
+    product: maggi,
+    quantity: "2.000",
+    confidence: 0.94,
+    bbox: box(0.06, 0.3, 0.22, 0.3),
+  }),
+  lays: det("d1", "Lays Classic Salted", "matched", { product: lays, confidence: 0.89, bbox: box(0.32, 0.2, 0.16, 0.34) }),
+  drink: det("d2", "Cold drink 750ml", "ambiguous", { candidates: [coke, pepsi], confidence: 0.72, bbox: box(0.52, 0.1, 0.11, 0.52) }),
+  parle: det("d3", "Parle-G Biscuits", "low_confidence", { candidates: [parle], confidence: 0.41, bbox: box(0.68, 0.58, 0.24, 0.18) }),
+  dairy: det("d1", "Dairy Milk Chocolate", "matched", { product: dairy, confidence: 0.88, bbox: box(0.68, 0.25, 0.2, 0.14) }),
+  unknown: det("d2", "Red toothpaste tube", "unmatched", { confidence: 0.66, bbox: box(0.08, 0.74, 0.34, 0.12) }),
+};
+
+/** What the real provider reports for a frame (test data only; the app has no fake provider). */
+export const REAL_PROVIDER = "local-cv (owl-vit + clip)";
 
 export function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -91,9 +96,10 @@ export function createFakeBackend() {
     calls: [] as Call[],
     cart: null as Json | null,
     recognize: async (): Promise<Response> => json(VISION_RESULT),
-    /** `n` = how many frames were sent before this one (the client's sequence). */
+    /** `n` = how many frames were sent before this one (the client's sequence). The default "camera"
+     * shows one Maggi packet; tests change what is in view with showScene(). */
     frame: async (n: number): Promise<Response> =>
-      json({ provider: "mock-live", is_mock: true, sequence: n, detections: LIVE_SCENES[n % LIVE_SCENES.length] }),
+      json({ provider: REAL_PROVIDER, is_mock: false, sequence: n, detections: [LIVE.maggi] }),
   };
 
   function addToCart(items: { product_id: string; quantity?: string }[], source: string) {
@@ -130,6 +136,8 @@ export function createFakeBackend() {
     if (route === "GET /api/v1/customers" || route === "GET /api/v1/khata/balances") return json([]);
     if (route === "POST /api/v1/vision/recognize") return state.recognize();
     if (route === "POST /api/v1/vision/frames") return state.frame(framesBefore);
+    const reference = /^POST \/api\/v1\/vision\/products\/([^/]+)\/reference-images$/.exec(route);
+    if (reference) return json({ id: "ref-1", product_id: reference[1], created_at: "" }, 201);
     if (route === "POST /api/v1/carts") {
       state.cart = { id: "cart-1", customer_id: null, channel: "counter", status: "open", items: [], subtotal: "0.00" };
       return json(state.cart, 201);
@@ -142,6 +150,11 @@ export function createFakeBackend() {
     return json({ error: { code: "not_found", message: `No fake for ${route}` } }, 404);
   }
 
+  /** What is in front of the (fake) camera from now on: every frame returns these detections. */
+  const showScene = (detections: Schemas["Detection"][]) => {
+    state.frame = async (n) => json({ provider: REAL_PROVIDER, is_mock: false, sequence: n, detections });
+  };
+
   const cartCalls = () => state.calls.filter((c) => c.path.startsWith("/api/v1/carts"));
-  return { state, handle, cartCalls };
+  return { state, handle, cartCalls, showScene };
 }

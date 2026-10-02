@@ -18,3 +18,6 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Vision diagnosis dumps (VISION_DEBUG_DIR): contain camera images
+vision-debug/

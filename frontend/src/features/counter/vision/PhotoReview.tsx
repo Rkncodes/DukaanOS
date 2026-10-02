@@ -99,8 +99,8 @@ export function PhotoReview({ products, onConfirm, onClose }: Props) {
           {result.is_mock && (
             <div className="mb-3">
               <MockNotice>
-                Demo recognizer (<code>{result.provider}</code>): these detections are fixed sample data for every
-                photo, not real AI.
+                Test provider (<code>{result.provider}</code>) — not real recognition: its detections do not come
+                from this photo.
               </MockNotice>
             </div>
           )}

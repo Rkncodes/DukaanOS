@@ -66,7 +66,7 @@ describe("Counter: add from photo", () => {
 
     expect(await screen.findByText("Detected products")).toBeTruthy();
     expect(screen.queryByText("Recognizing products…")).toBeNull();
-    expect(screen.getByText(/not real AI/)).toBeTruthy();
+    expect(screen.queryByText(/not real recognition/)).toBeNull(); // real provider: no test-provider notice
 
     expect(within(row(1)).getByText(maggi.name)).toBeTruthy();
     expect((within(row(1)).getByLabelText("Qty") as HTMLInputElement).value).toBe("2");

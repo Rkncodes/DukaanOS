@@ -24,11 +24,22 @@ const TONE: Record<Detection["match"], string> = {
   unmatched: "border-slate-400 bg-slate-500",
 };
 
+export type BoxAnnotation = { tag?: string; faded?: boolean };
+
 /**
  * Bounding boxes over an image/video. Coordinates are normalized (0..1), so the parent must be
  * `relative` and sized exactly like the media (e.g. <img|video className="block w-full">).
  */
-export function DetectionOverlay({ detections, detailed = false }: { detections: Detection[]; detailed?: boolean }) {
+export function DetectionOverlay({
+  detections,
+  detailed = false,
+  annotate,
+}: {
+  detections: Detection[];
+  detailed?: boolean;
+  /** Optional per-box status from the caller (e.g. live tracking: "in bill", "leaving"). */
+  annotate?: (detection: Detection, index: number) => BoxAnnotation;
+}) {
   return (
     <div className="pointer-events-none absolute inset-0" aria-label="Detections" role="list">
       {detections.map((d, i) => {
@@ -36,13 +47,15 @@ export function DetectionOverlay({ detections, detailed = false }: { detections:
         const { title, price, note } = describeDetection(d);
         const confidence = d.confidence === null ? null : `${Math.round(d.confidence * 100)}%`;
         const [border, badge] = TONE[d.match].split(" ");
+        const { tag, faded } = annotate?.(d, i) ?? {};
         return (
           <div
             key={d.id}
             role="listitem"
             aria-label={`Box ${i + 1}: ${title}`}
             data-match={d.match}
-            className={`absolute border-2 ${border}`}
+            data-faded={faded ? "true" : undefined}
+            className={`absolute border-2 transition-opacity ${border} ${faded ? "border-dashed opacity-40" : ""}`}
             style={{
               left: `${d.bbox.x * 100}%`,
               top: `${d.bbox.y * 100}%`,
@@ -61,6 +74,7 @@ export function DetectionOverlay({ detections, detailed = false }: { detections:
                   {confidence && ` · ${confidence}`}
                 </>
               )}
+              {tag && ` · ${tag}`}
             </span>
           </div>
         );

@@ -1,5 +1,6 @@
-"""Vision -> Bill: upload validation, the mock provider, merchant-scoped catalog matching,
-and confirmed items entering the existing cart (then the existing checkout)."""
+"""Vision -> Bill (photo): upload validation, merchant-scoped catalog matching, and confirmed
+items entering the existing cart (then the existing checkout). The provider is replaced at its
+boundary by FakeRecognizer; the real image-based provider is covered in test_vision_real.py."""
 
 import uuid
 from decimal import Decimal
@@ -11,7 +12,7 @@ from pydantic import ValidationError
 
 from app.core.enums import InputSource
 from app.integrations.types import BoundingBox, RecognizedItem
-from app.integrations.vision import MockRecognizer, NotConfiguredRecognizer, build_recognizer
+from app.integrations.vision import NotConfiguredRecognizer, build_recognizer
 from app.main import app
 from app.modules.vision.image import MAX_IMAGE_BYTES
 from app.modules.vision.router import get_recognizer
@@ -140,42 +141,12 @@ def test_result_shape(client_a):
     assert d["bbox"] == {"x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4}
 
 
-# ---- mock provider ----
+# ---- provider registry ----
 
 
-def test_mock_provider_is_deterministic_and_labelled():
-    mock = build_recognizer("mock")
-    assert isinstance(mock, MockRecognizer) and mock.is_mock and mock.name == "mock"
-    first = mock.recognize(image_bytes())
-    assert first == mock.recognize(image_bytes("JPEG", (10, 10)))  # ignores the image
-    assert all(i.source == InputSource.VISION and i.bbox is not None for i in first)
+def test_registry_has_no_mock_provider():
     assert isinstance(build_recognizer("none"), NotConfiguredRecognizer)
-
-
-def test_mock_against_demo_catalog_covers_every_match_state(client_a):
-    catalog = seed_demo_catalog(client_a)
-    use_recognizer(MockRecognizer())
-    body = upload(client_a).json()
-    assert body["is_mock"] is True
-    by_label = {d["label"]: d for d in body["detections"]}
-
-    maggi = by_label["Maggi 2-Minute Noodles"]
-    assert maggi["match"] == "matched" and maggi["quantity"] == "2.000"
-    assert maggi["product"]["id"] == catalog["Maggi 2-Minute Noodles 70g"]["id"]
-
-    assert by_label["Coke 750ml"]["match"] == "matched"
-    assert by_label["Coke 750ml"]["product"]["id"] == catalog["Coke 750ml"]["id"]
-
-    drink = by_label["Cold drink 750ml"]
-    assert drink["match"] == "ambiguous" and drink["product"] is None
-    assert {c["name"] for c in drink["candidates"]} == {"Coke 750ml", "Pepsi 750ml", "Thums Up 750ml"}
-
-    biscuits = by_label["Parle-G Biscuits"]
-    assert biscuits["match"] == "low_confidence" and biscuits["product"] is None
-    assert [c["name"] for c in biscuits["candidates"]] == ["Parle-G Biscuits 250g"]
-
-    paste = by_label["Red toothpaste tube"]
-    assert paste["match"] == "unmatched" and paste["product"] is None and paste["candidates"] == []
+    assert isinstance(build_recognizer("mock"), NotConfiguredRecognizer)  # unknown names never fall back to fakes
 
 
 # ---- matching ----
@@ -230,8 +201,8 @@ def test_barcode_and_product_id_detections(client_a):
 def test_recognize_does_not_touch_any_cart(client_a):
     seed_demo_catalog(client_a)
     cart = create_cart(client_a)
-    use_recognizer(MockRecognizer())
-    assert upload(client_a).status_code == 200
+    use_recognizer(FakeRecognizer(seen("Maggi 2-Minute Noodles 70g"), seen("Mystery item")))
+    assert upload(client_a).json()["detections"][0]["match"] == "matched"
     assert client_a.get(f"/api/v1/carts/{cart['id']}").json()["items"] == []
 
 

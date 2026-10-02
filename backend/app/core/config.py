@@ -1,9 +1,13 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from app.integrations.vision_real import RealVisionConfig
+    from app.modules.vision.matching import MatchingConfig
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -27,9 +31,30 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5173"]
 
-    # Which app.integrations.vision provider serves /vision/recognize.
-    # None -> the deterministic mock outside prod, nothing (503) in prod.
-    vision_provider: Literal["mock", "none"] | None = None
+    # Which app.integrations.vision provider serves /vision/recognize and /vision/frames.
+    # "real" (default) = local computer vision on the uploaded image (needs `uv sync --extra vision`);
+    # "none" = vision switched off. There is no mock provider and no fallback: if the real provider
+    # cannot run, the API answers 503 with the reason.
+    vision_provider: Literal["real", "none"] = "real"
+    vision_real_device: Literal["cpu", "cuda"] = "cpu"
+    vision_real_locator_model: str = "google/owlvit-base-patch32"
+    vision_real_identifier_model: str = "openai/clip-vit-base-patch32"
+    vision_real_prompts: Path | None = None  # None -> app/integrations/vision_prompts.json (generic, no products)
+    vision_real_min_locate_score: float = 0.15
+    vision_real_ocr: bool = True  # read printed text on packs (second source of evidence)
+    vision_real_ocr_side: int = 640  # OCR resolution: higher reads smaller text, slower
+    # Which app.integrations.ocr reader serves /parchi/read. "ocr" (default) = local OCR on the
+    # uploaded photo (needs `uv sync --extra parchi`); "none" = switched off. No mock, no fallback.
+    parchi_provider: Literal["ocr", "none"] = "ocr"
+    # Diagnosis only: write every pipeline stage of every recognized image to this folder
+    # (frame, crops, boxes, trace.json). Unset in normal use: it stores camera images on disk.
+    vision_debug_dir: Path | None = None
+    # Catalog matching (app.modules.vision.matching). Scores are combined evidence, 0..1.
+    vision_match_score: float = Field(default=0.75, gt=0, le=1)  # needed to preselect a product
+    vision_min_score: float = Field(default=0.35, ge=0, le=1)  # below this: not in catalog
+    vision_match_margin: float = Field(default=0.15, ge=0, le=1)  # lead over the runner-up, else the merchant picks
+    vision_reference_floor: float = Field(default=0.65, ge=-1, le=1)  # reference-photo similarity: no support...
+    vision_reference_strong: float = Field(default=0.85, ge=-1, le=1)  # ...full support
 
     @property
     def effective_cookie_secure(self) -> bool:
@@ -37,9 +62,41 @@ class Settings(BaseSettings):
 
     @property
     def effective_vision_provider(self) -> str:
-        if self.vision_provider is not None:
-            return self.vision_provider
-        return "none" if self.env == "prod" else "mock"
+        return self.vision_provider
+
+    @property
+    def real_vision(self) -> "RealVisionConfig":
+        from app.integrations.vision_real import DEFAULT_PROMPTS, RealVisionConfig
+
+        return RealVisionConfig(
+            locator_model=self.vision_real_locator_model,
+            identifier_model=self.vision_real_identifier_model,
+            device=self.vision_real_device,
+            prompts_path=self.vision_real_prompts or DEFAULT_PROMPTS,
+            min_locate_score=self.vision_real_min_locate_score,
+            ocr=self.vision_real_ocr,
+            ocr_side=self.vision_real_ocr_side,
+        )
+
+    @property
+    def vision_matching(self) -> "MatchingConfig":
+        from app.modules.vision.matching import MatchingConfig
+
+        return MatchingConfig(
+            match_score=self.vision_match_score,
+            min_score=self.vision_min_score,
+            margin=self.vision_match_margin,
+            reference_floor=self.vision_reference_floor,
+            reference_strong=self.vision_reference_strong,
+        )
+
+    @model_validator(mode="after")
+    def _matching_thresholds_are_ordered(self) -> "Settings":
+        if self.vision_min_score > self.vision_match_score:
+            raise ValueError("VISION_MIN_SCORE must not exceed VISION_MATCH_SCORE")
+        if self.vision_reference_floor >= self.vision_reference_strong:
+            raise ValueError("VISION_REFERENCE_FLOOR must be below VISION_REFERENCE_STRONG")
+        return self
 
     @model_validator(mode="after")
     def _require_real_secret_in_prod(self) -> "Settings":

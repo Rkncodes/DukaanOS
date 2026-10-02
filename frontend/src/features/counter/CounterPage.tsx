@@ -4,6 +4,7 @@ import type { Schemas } from "../../lib/api/client";
 import { useProducts } from "../../lib/api/queries";
 import { useSession } from "../auth/session";
 import { CartPanel } from "./CartPanel";
+import { ParchiReview } from "./parchi/ParchiReview";
 import { ProductPicker } from "./ProductPicker";
 import { Receipt } from "./Receipt";
 import { useCounter } from "./useCounter";
@@ -11,19 +12,22 @@ import { LiveVision } from "./vision/LiveVision";
 import { PhotoReview } from "./vision/PhotoReview";
 
 /**
- * Counter billing: pick products (scan, search, photo or live camera) -> cart -> checkout (cash/UPI/card or khata).
+ * Counter billing: pick products (scan, search, photo, live camera or parchi) -> cart -> checkout (cash/UPI/card or khata).
  * Stock, payments and khata are all updated by the one backend checkout transaction.
  */
-export function CounterPage() {
+export function CounterPage({ scanIntervalMs }: { scanIntervalMs?: number } = {}) {
   const products = useProducts();
   const { data: session } = useSession();
   const counter = useCounter();
   const [receipt, setReceipt] = useState<Schemas["BillRead"] | null>(null);
-  const [visionMode, setVisionMode] = useState<"photo" | "live" | null>(null);
+  const [visionMode, setVisionMode] = useState<"photo" | "live" | "parchi" | null>(null);
 
   // Both vision entry points end at the same existing cart path.
   const confirmVision = (items: Schemas["ConfirmedItem"][]) =>
     counter.addConfirmed.mutateAsync({ source: "vision", items });
+  // A parchi is one more input to the same cart path.
+  const confirmParchi = (items: Schemas["ConfirmedItem"][]) =>
+    counter.addConfirmed.mutateAsync({ source: "parchi", items });
 
   if (receipt) {
     return (
@@ -42,13 +46,17 @@ export function CounterPage() {
           <QueryState isPending={products.isPending} error={products.error} />
           {products.data && visionMode === "live" && (
             <LiveVision
-              products={products.data}
+              cart={counter.cart}
               onConfirm={confirmVision}
               onClose={() => setVisionMode(null)}
+              scanIntervalMs={scanIntervalMs}
             />
           )}
           {products.data && visionMode === "photo" && (
             <PhotoReview products={products.data} onConfirm={confirmVision} onClose={() => setVisionMode(null)} />
+          )}
+          {products.data && visionMode === "parchi" && (
+            <ParchiReview products={products.data} onConfirm={confirmParchi} onClose={() => setVisionMode(null)} />
           )}
           {products.data && visionMode === null && (
             <>
@@ -66,6 +74,13 @@ export function CounterPage() {
                   className="rounded-md border border-emerald-600 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
                 >
                   Add from photo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVisionMode("parchi")}
+                  className="rounded-md border border-emerald-600 px-3 py-1.5 text-sm font-medium text-emerald-700 hover:bg-emerald-50"
+                >
+                  Add from Parchi
                 </button>
               </div>
               <ProductPicker
