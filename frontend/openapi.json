@@ -4877,6 +4877,118 @@
           }
         }
       }
+    },
+    "/api/v1/voice/parse": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "summary": "Parse Transcript",
+        "description": "Turn a speech-to-text transcript into items matched to this merchant's catalogue.\nRead-only: nothing is stored and nothing is added to a cart.",
+        "operationId": "parse_transcript_api_v1_voice_parse_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6908,6 +7020,131 @@
           "detections"
         ],
         "title": "VisionResult"
+      },
+      "VoiceLine": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "raw_text": {
+            "type": "string",
+            "title": "Raw Text"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "match": {
+            "$ref": "#/components/schemas/MatchState"
+          },
+          "product": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProductRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/ProductRead"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "match_confidence": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Confidence"
+          },
+          "matched_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matched Words"
+          },
+          "unmatched_words": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unmatched Words"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "raw_text",
+          "description",
+          "quantity",
+          "match",
+          "product",
+          "candidates",
+          "match_confidence",
+          "matched_words",
+          "unmatched_words"
+        ],
+        "title": "VoiceLine",
+        "description": "One spoken item and how it maps onto this merchant's catalogue.\nNothing is added to a cart until the merchant confirms."
+      },
+      "VoiceRequest": {
+        "properties": {
+          "transcript": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Transcript"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transcript"
+        ],
+        "title": "VoiceRequest"
+      },
+      "VoiceResult": {
+        "properties": {
+          "transcript": {
+            "type": "string",
+            "title": "Transcript"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/VoiceLine"
+            },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transcript",
+          "lines"
+        ],
+        "title": "VoiceResult"
       }
     }
   }

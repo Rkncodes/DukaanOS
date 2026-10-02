@@ -558,6 +558,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/voice/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Transcript
+         * @description Turn a speech-to-text transcript into items matched to this merchant's catalogue.
+         *     Read-only: nothing is stored and nothing is added to a cart.
+         */
+        post: operations["parse_transcript_api_v1_voice_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1273,6 +1294,43 @@ export interface components {
             detections: components["schemas"]["Detection"][];
             /** Sequence */
             sequence?: number | null;
+        };
+        /**
+         * VoiceLine
+         * @description One spoken item and how it maps onto this merchant's catalogue.
+         *     Nothing is added to a cart until the merchant confirms.
+         */
+        VoiceLine: {
+            /** Id */
+            id: string;
+            /** Raw Text */
+            raw_text: string;
+            /** Description */
+            description: string;
+            /** Quantity */
+            quantity: string | null;
+            match: components["schemas"]["MatchState"];
+            product: components["schemas"]["ProductRead"] | null;
+            /** Candidates */
+            candidates: components["schemas"]["ProductRead"][];
+            /** Match Confidence */
+            match_confidence: number | null;
+            /** Matched Words */
+            matched_words: string[];
+            /** Unmatched Words */
+            unmatched_words: string[];
+        };
+        /** VoiceRequest */
+        VoiceRequest: {
+            /** Transcript */
+            transcript: string;
+        };
+        /** VoiceResult */
+        VoiceResult: {
+            /** Transcript */
+            transcript: string;
+            /** Lines */
+            lines: components["schemas"]["VoiceLine"][];
         };
     };
     responses: never;
@@ -5211,6 +5269,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ParchiResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    parse_transcript_api_v1_voice_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VoiceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoiceResult"];
                 };
             };
             /** @description Bad Request */
