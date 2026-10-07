@@ -1,26 +1,15 @@
-import { Card, ComingSoon, PageHeader } from "../../app/ui";
-import { useProducts } from "../../lib/api/queries";
-import { useSession } from "../auth/session";
+import { Outlet } from "react-router";
+import { PageHeader } from "../../app/ui";
 
+/**
+ * The merchant's side of the Shop: orders placed on the storefront, the storefront itself, and the QR code
+ * that leads customers to it. The app's navigation moves between them.
+ */
 export function ShopPage() {
-  const { data: session } = useSession();
-  const products = useProducts();
-
   return (
     <>
-      <PageHeader title="Shop" subtitle="Your online storefront, reachable by QR code" />
-      <ComingSoon>
-        Storefront, QR access, customer cart and online orders arrive in the Shop phase. Shop orders use the same
-        cart → checkout pipeline as the Counter (channel = shop).
-      </ComingSoon>
-      <Card title="Storefront">
-        <dl className="grid grid-cols-[max-content_1fr] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-slate-500">Store link (planned)</dt>
-          <dd className="font-mono">/s/{session?.merchant.store_slug}</dd>
-          <dt className="text-slate-500">Products in catalogue</dt>
-          <dd>{products.data?.length ?? "–"}</dd>
-        </dl>
-      </Card>
+      <PageHeader title="Shop" subtitle="Manage your online storefront and incoming orders." />
+      <Outlet />
     </>
   );
 }

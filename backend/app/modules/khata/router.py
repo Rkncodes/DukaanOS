@@ -28,7 +28,7 @@ def get_ledger(customer_id: uuid.UUID, db: DbSession, ctx: Tenant) -> CustomerLe
     return CustomerLedger(
         customer=CustomerRead.model_validate(customers.get_customer(db, ctx, customer_id)),
         balance=service.get_balance(db, ctx, customer_id),
-        entries=[KhataEntryRead.model_validate(e) for e in service.list_entries(db, ctx, customer_id)],
+        entries=service.list_ledger(db, ctx, customer_id),
     )
 
 

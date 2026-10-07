@@ -6,8 +6,8 @@ One operating system for small local merchants. Four modules, **one shared set o
 |---|---|---|
 | **Counter** | Billing: manual, barcode, vision, voice, handwritten parchi | Foundation (cart/checkout API) |
 | **Shop** | QR storefront, online orders | Placeholder |
-| **Khata** | Customer udhaar ledger | Foundation (ledger API) |
-| **Salaahkaar** | AI assistant over real shop data | Tool-registry interface only |
+| **Khata** | Customer udhaar ledger | Customers, ledger, record credit / payment |
+| **Salaahkaar** | AI assistant over real shop data | Answers questions (English / Hindi / Hinglish) through read-only tools, via Groq; needs `GROQ_API_KEY` |
 
 ## Stack
 

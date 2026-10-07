@@ -42,8 +42,11 @@ export function useLogout() {
   return useMutation({
     mutationFn: () => unwrap(api.POST("/api/v1/auth/logout")),
     onSuccess: () => {
-      qc.clear();
+      // The backend has dropped the session cookie. End the session on the very query the route guards
+      // watch (clearing the cache instead would detach them, and the page would stay as it was), ...
       qc.setQueryData(SESSION_KEY, null);
+      // ... then forget this merchant's data, so the next login on this device starts empty.
+      qc.removeQueries({ predicate: (query) => query.queryKey[0] !== SESSION_KEY[0] });
     },
   });
 }

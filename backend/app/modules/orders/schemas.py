@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.core.enums import Channel, InputSource, OrderStatus, PaymentStatus
+from app.core.enums import Channel, InputSource, OrderStatus, PaymentMethod, PaymentStatus
 from app.core.types import MoneyOut, QuantityOut, Schema
 from app.modules.customers.schemas import CustomerRead
 from app.modules.khata.schemas import KhataEntryRead
@@ -24,6 +24,8 @@ class OrderRead(Schema):
     id: uuid.UUID
     customer_id: uuid.UUID | None
     cart_id: uuid.UUID | None
+    customer_name: str | None  # given by a Shop customer when ordering
+    customer_phone: str | None
     channel: Channel
     status: OrderStatus
     subtotal: MoneyOut
@@ -33,6 +35,14 @@ class OrderRead(Schema):
     items: list[OrderItemRead]
     created_at: datetime
     updated_at: datetime
+
+
+class OrderStatusUpdate(BaseModel):
+    """Move an order along its lifecycle. Which moves are allowed is decided by the backend."""
+
+    status: OrderStatus
+    # How the customer paid; needed when an unpaid order is completed (handed over).
+    payment_method: PaymentMethod | None = None
 
 
 class BillRead(BaseModel):

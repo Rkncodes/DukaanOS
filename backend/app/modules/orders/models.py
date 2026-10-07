@@ -21,6 +21,9 @@ class Order(UUIDPk, MerchantScoped, Timestamps, Base):
 
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id"), index=True)
     cart_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("carts.id", ondelete="SET NULL"), unique=True)
+    # Contact a Shop customer gave when ordering without an account (not a khata customer).
+    customer_name: Mapped[str | None] = mapped_column(String(120))
+    customer_phone: Mapped[str | None] = mapped_column(String(20))
     channel: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(20), default=OrderStatus.PENDING)
     subtotal: Mapped[Decimal]

@@ -47,6 +47,41 @@ export function stockShortfalls(
   return short;
 }
 
+/**
+ * What can still be added to this bill, per product: the catalogue's stock minus what the bill
+ * already holds. Display only. Adding to the bill changes no stock: the backend takes it at checkout.
+ */
+export function availableStock(
+  products: Schemas["ProductRead"][],
+  items: Schemas["CartItemRead"][],
+): Map<string, number> {
+  const inCart = new Map<string, number>();
+  for (const item of items) inCart.set(item.product_id, (inCart.get(item.product_id) ?? 0) + Number(item.quantity));
+  return new Map(
+    products.map((p) => {
+      const left = Number(p.stock_quantity) - (inCart.get(p.id) ?? 0);
+      return [p.id, Math.max(0, Math.round(left * 1000) / 1000)]; // quantities have 3 decimals
+    }),
+  );
+}
+
+export type BarcodeLookup =
+  | { kind: "found"; product: Schemas["ProductRead"] }
+  | { kind: "unknown" }
+  | { kind: "ambiguous"; products: Schemas["ProductRead"][] };
+
+/**
+ * A scanned barcode against the catalogue: the product whose barcode is exactly this code, or nothing.
+ * Never a near match, never a name search. Two products carrying one code is an error to be fixed in the
+ * catalogue, not a choice to make silently (the database forbids it; this guards the screen all the same).
+ */
+export function findByBarcode(code: string, products: Schemas["ProductRead"][]): BarcodeLookup {
+  const text = code.trim();
+  const matches = text ? products.filter((p) => p.barcode === text) : [];
+  if (matches.length === 1) return { kind: "found", product: matches[0] };
+  return matches.length === 0 ? { kind: "unknown" } : { kind: "ambiguous", products: matches };
+}
+
 export type ScanAction =
   | { kind: "barcode"; barcode: string }
   | { kind: "product"; productId: string }

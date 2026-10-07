@@ -2,11 +2,13 @@ import { useEffect, useRef } from "react";
 import type { Schemas } from "../../lib/api/client";
 import { formatINR, formatQuantity } from "../../lib/format";
 
-const METHOD_LABEL: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card" };
+const METHOD_LABEL: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card", paytm: "Paytm" };
 
 /** Shown after checkout: the completed bill and exactly how it was settled. */
 export function Receipt({ bill, storeName, onNext }: { bill: Schemas["BillRead"]; storeName?: string; onNext: () => void }) {
   const { order, customer, payments, khata_entry, customer_balance } = bill;
+  // Present only after the backend verified the payment with Paytm.
+  const paytm = payments.find((p) => p.provider === "paytm" && p.status === "succeeded");
   const nextRef = useRef<HTMLButtonElement>(null);
   useEffect(() => nextRef.current?.focus(), []);
 
@@ -14,9 +16,18 @@ export function Receipt({ bill, storeName, onNext }: { bill: Schemas["BillRead"]
     <div className="mx-auto max-w-md">
       <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center">
         <div className="text-sm text-emerald-800">
-          {khata_entry ? "Added to khata" : order.payment_status === "paid" ? "Payment received" : "Bill saved"}
+          {khata_entry
+            ? "Added to khata"
+            : order.payment_status !== "paid"
+              ? "Bill saved"
+              : paytm
+                ? "Payment successful ✓ Verified by Paytm"
+                : "Payment received"}
         </div>
         <div className="text-3xl font-bold text-emerald-900">{formatINR(order.total)}</div>
+        {paytm?.external_reference && (
+          <div className="mt-1 text-xs text-emerald-800">Paytm reference: {paytm.external_reference}</div>
+        )}
       </div>
 
       <article className="rounded-lg border border-slate-200 bg-white p-5 text-sm">

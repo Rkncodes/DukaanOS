@@ -7,7 +7,7 @@ from app.modules.customers.models import Customer
 from app.modules.khata.models import KhataEntry
 from app.modules.merchants.models import Merchant, User
 from app.modules.orders.models import Order, OrderItem
-from app.modules.payments.models import Payment
+from app.modules.payments.models import Payment, PaytmPayment
 from app.modules.vision.models import ProductReferenceImage
 
 __all__ = [
@@ -21,6 +21,7 @@ __all__ = [
     "Order",
     "OrderItem",
     "Payment",
+    "PaytmPayment",
     "Product",
     "ProductReferenceImage",
     "User",

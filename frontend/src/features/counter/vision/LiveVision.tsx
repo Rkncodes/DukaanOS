@@ -161,11 +161,13 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
   const boxes = tracks.map((t) => ({ ...t.detection, id: t.key }));
 
   return (
-    <section aria-label="Vision counter" className="rounded-lg border border-slate-200 bg-white p-4">
+    <section aria-label="Vision counter" className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="font-medium text-slate-900">
+        <h2 className="text-lg font-semibold text-slate-900">
           Vision counter{" "}
-          {phase === "live" && <span className="ml-1 text-xs font-normal text-emerald-700">● Live</span>}
+          {phase === "live" && (
+            <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 align-middle text-xs font-medium text-emerald-700">● Live</span>
+          )}
         </h2>
         <button
           type="button"
@@ -188,8 +190,8 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
           </button>
         </div>
       ) : (
-        <div className="relative w-full overflow-hidden rounded-md bg-slate-900">
-          <video ref={videoRef} aria-label="Live camera" muted playsInline className="block min-h-48 w-full" />
+        <div className="relative w-full overflow-hidden rounded-xl bg-slate-900 ring-1 ring-slate-900/10">
+          <video ref={videoRef} aria-label="Live camera" muted playsInline className="block min-h-64 w-full lg:min-h-[24rem]" />
           <DetectionOverlay
             detections={boxes}
             detailed
@@ -234,7 +236,7 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
       {phase !== "error" && (
         <>
           <div className="mb-1 mt-4 flex items-baseline justify-between">
-            <h3 className="text-sm font-medium text-slate-500">On the counter now</h3>
+            <h3 className="text-sm font-semibold text-slate-700">On the counter now</h3>
             <span className="text-xs text-slate-400">Nothing is billed until you add it.</span>
           </div>
           {tracks.length === 0 ? (
@@ -264,7 +266,7 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
             type="button"
             disabled={ready.length === 0 || committing}
             onClick={() => void commit(ready)}
-            className="mt-3 w-full rounded-md border border-emerald-600 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+            className="mt-3 w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
             {committing ? "Adding…" : `Add all ready (${ready.length})`}
           </button>

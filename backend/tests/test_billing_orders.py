@@ -40,6 +40,44 @@ def test_cart_add_update_remove(client_a):
     assert client_a.get(f"/api/v1/carts/{cart['id']}").json()["subtotal"] == "42.00"
 
 
+def test_barcode_billing_is_an_exact_lookup_into_the_same_cart_and_bill(client_a, client_b):
+    maggi = create_product(client_a, name="Maggi", price="14.00", barcode="8901058000017", stock_quantity="5")
+    retired = create_product(client_a, name="Old Biscuit", price="10.00", barcode="8900000000999")
+    client_a.delete(f"/api/v1/products/{retired['id']}")  # taken off sale
+    create_product(client_b, name="B's Chips", price="20.00", barcode="8902222222222")
+    rahul = create_customer(client_a, name="Rahul")
+    cart = create_cart(client_a, customer_id=rahul["id"])
+    url = f"/api/v1/carts/{cart['id']}/items"
+
+    # A scan resolves the exact product at the catalogue's price; scanning again adds one more to the same line.
+    first = client_a.post(url, json={"barcode": "8901058000017", "source": "barcode"})
+    assert first.status_code == 200
+    line = first.json()["items"][0]
+    assert (line["product_id"], line["product_name"], line["unit_price"], line["quantity"], line["source"]) == (
+        maggi["id"], "Maggi", "14.00", "1.000", "barcode",
+    )  # fmt: skip
+    again = client_a.post(url, json={"barcode": "8901058000017", "source": "barcode"}).json()
+    assert [(i["product_name"], i["quantity"]) for i in again["items"]] == [("Maggi", "2.000")]
+
+    # Nothing is guessed: a near miss, an off-sale product's code and another merchant's code are all unknown.
+    for unknown in ("890105800001", "89010580000170", "0000000000000", "8900000000999", "8902222222222"):
+        res = client_a.post(url, json={"barcode": unknown, "source": "barcode"})
+        assert res.status_code == 404, unknown
+        assert res.json()["error"] == {"code": "not_found", "message": f"Barcode not found: {unknown}", "details": None}
+    assert client_a.get(f"/api/v1/carts/{cart['id']}").json()["subtotal"] == "28.00"  # the bill did not change
+
+    # The scanned line is an ordinary line: its quantity changes, stock is respected, and it checks out to khata.
+    cart = client_a.patch(f"{url}/{line['id']}", json={"quantity": "6"}).json()
+    short = client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "khata"})
+    assert short.status_code == 409 and short.json()["error"]["code"] == "insufficient_stock"
+    client_a.patch(f"{url}/{line['id']}", json={"quantity": "5"})
+    order = client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "khata"}).json()
+    assert order["total"] == "70.00" and order["payment_status"] == "credit"
+    assert [(i["product_name"], i["source"]) for i in order["items"]] == [("Maggi", "barcode")]
+    assert client_a.get(f"/api/v1/products/{maggi['id']}").json()["stock_quantity"] == "0.000"
+    assert client_a.get(f"/api/v1/customers/{rahul['id']}/khata").json()["balance"] == "70.00"
+
+
 def test_add_item_validation(client_a):
     product = create_product(client_a)
     cart = create_cart(client_a)

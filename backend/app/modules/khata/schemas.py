@@ -33,10 +33,14 @@ class KhataEntryRead(Schema):
     created_at: datetime
 
 
+class LedgerEntryRead(KhataEntryRead):
+    balance_after: MoneyOut  # the customer's balance once this entry was recorded
+
+
 class CustomerLedger(BaseModel):
     customer: CustomerRead
     balance: MoneyOut  # positive = customer owes the merchant
-    entries: list[KhataEntryRead]
+    entries: list[LedgerEntryRead]  # newest first
 
 
 class KhataBalance(BaseModel):
