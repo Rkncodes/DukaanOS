@@ -16,7 +16,7 @@ from app.modules.billing.schemas import (
     ConfirmedItemsAdd,
 )
 from app.modules.orders import service as orders
-from app.modules.orders.schemas import OrderRead
+from app.modules.orders.schemas import CrossSellSuggestion, OrderRead
 
 router = APIRouter(prefix="/carts", tags=["billing"])
 
@@ -73,6 +73,11 @@ def remove_item(cart_id: uuid.UUID, item_id: uuid.UUID, db: DbSession, ctx: Tena
     cart = service.remove_item(db, ctx, cart_id, item_id)
     db.commit()
     return cart
+
+
+@router.get("/{cart_id}/cross-sell")
+def cross_sell(cart_id: uuid.UUID, db: DbSession, ctx: Tenant) -> list[CrossSellSuggestion]:
+    return orders.cross_sell(db, ctx, cart_id)
 
 
 @router.post("/{cart_id}/checkout", status_code=status.HTTP_201_CREATED)

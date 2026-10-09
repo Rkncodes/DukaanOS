@@ -1,8 +1,8 @@
 """Payment provider abstraction.
 
-Today every method settles immediately (cash, or UPI/card the merchant confirms on
-their own device). A gateway such as Paytm plugs in by implementing PaymentProvider,
-returning PENDING, and confirming later via a webhook -> payments.service.
+The methods here settle immediately (cash, or UPI/card the merchant confirms on their own
+device). Paytm is not one of them: its money is only recorded after the backend has verified
+it with Paytm (app.modules.payments.paytm), so it can never be "collected" by naming the method.
 """
 
 from dataclasses import dataclass
@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from app.core.enums import PaymentMethod, PaymentRecordStatus
+from app.core.errors import DomainValidationError
 
 
 @dataclass(frozen=True)
@@ -48,4 +49,7 @@ _PROVIDERS: dict[PaymentMethod, PaymentProvider] = {
 
 
 def get_provider(method: PaymentMethod) -> PaymentProvider:
-    return _PROVIDERS[method]
+    provider = _PROVIDERS.get(method)
+    if provider is None:
+        raise DomainValidationError("Paytm payments are taken with 'Pay with Paytm', which verifies them with Paytm")
+    return provider

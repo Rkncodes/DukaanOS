@@ -96,3 +96,33 @@ def test_bill_is_merchant_scoped(client_a, client_b):
     res = client_b.get(f"/api/v1/orders/{order['id']}/bill")
     assert res.status_code == 404
     assert res.json()["error"]["code"] == "not_found"
+
+
+def test_stock_only_moves_at_checkout_never_while_the_bill_is_being_built(client_a, make_client):
+    """The Counter shows "stock minus what is on the bill" on screen; the database is not touched until the sale."""
+    atta = create_product(client_a, name="Atta 5kg", price="295.00", stock_quantity="15")
+    cart = create_cart(client_a)
+
+    line = _add(client_a, cart["id"], product_id=atta["id"], quantity="7")["items"][0]
+    assert _stock(client_a, atta["id"]) == "15.000"
+    client_a.patch(f"/api/v1/carts/{cart['id']}/items/{line['id']}", json={"quantity": "15"})
+    assert _stock(client_a, atta["id"]) == "15.000"
+    # Even a bill for more than there is does not move stock; it is refused whole at checkout.
+    client_a.patch(f"/api/v1/carts/{cart['id']}/items/{line['id']}", json={"quantity": "16"})
+    refused = client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "cash"})
+    assert refused.status_code == 409 and refused.json()["error"]["code"] == "insufficient_stock"
+    assert _stock(client_a, atta["id"]) == "15.000"
+    client_a.delete(f"/api/v1/carts/{cart['id']}/items/{line['id']}")
+    assert _stock(client_a, atta["id"]) == "15.000"
+
+    # A storefront order takes from the same stock, and the Counter's sale then sees what is left.
+    shopper = make_client()
+    placed = shopper.post("/api/v1/public/stores/store-a/orders", json={"items": [{"product_id": atta["id"], "quantity": "5"}]})
+    assert placed.status_code == 201 and _stock(client_a, atta["id"]) == "10.000"
+    _add(client_a, cart["id"], product_id=atta["id"], quantity="11")
+    assert client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "cash"}).status_code == 409
+    line = client_a.get(f"/api/v1/carts/{cart['id']}").json()["items"][0]
+    client_a.patch(f"/api/v1/carts/{cart['id']}/items/{line['id']}", json={"quantity": "3"})
+    assert _stock(client_a, atta["id"]) == "10.000"
+    _checkout(client_a, cart["id"], method="cash")
+    assert _stock(client_a, atta["id"]) == "7.000"  # only the completed sale reduced it

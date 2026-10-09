@@ -2,11 +2,25 @@ import { useEffect, useRef } from "react";
 import type { Schemas } from "../../lib/api/client";
 import { formatINR, formatQuantity } from "../../lib/format";
 
-const METHOD_LABEL: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card" };
+const METHOD_LABEL: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card", paytm: "Paytm" };
 
 /** Shown after checkout: the completed bill and exactly how it was settled. */
-export function Receipt({ bill, storeName, onNext }: { bill: Schemas["BillRead"]; storeName?: string; onNext: () => void }) {
+export function Receipt({
+  bill,
+  storeName,
+  storeGstin,
+  onNext,
+}: {
+  bill: Schemas["BillRead"];
+  storeName?: string;
+  storeGstin?: string | null;
+  onNext: () => void;
+}) {
   const { order, customer, payments, khata_entry, customer_balance } = bill;
+  const tax = order.tax_summary;
+  const taxed = Number(tax.total_tax) > 0;
+  // Present only after the backend verified the payment with Paytm.
+  const paytm = payments.find((p) => p.provider === "paytm" && p.status === "succeeded");
   const nextRef = useRef<HTMLButtonElement>(null);
   useEffect(() => nextRef.current?.focus(), []);
 
@@ -14,14 +28,24 @@ export function Receipt({ bill, storeName, onNext }: { bill: Schemas["BillRead"]
     <div className="mx-auto max-w-md">
       <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center">
         <div className="text-sm text-emerald-800">
-          {khata_entry ? "Added to khata" : order.payment_status === "paid" ? "Payment received" : "Bill saved"}
+          {khata_entry
+            ? "Added to khata"
+            : order.payment_status !== "paid"
+              ? "Bill saved"
+              : paytm
+                ? "Payment successful ✓ Verified by Paytm"
+                : "Payment received"}
         </div>
         <div className="text-3xl font-bold text-emerald-900">{formatINR(order.total)}</div>
+        {paytm?.external_reference && (
+          <div className="mt-1 text-xs text-emerald-800">Paytm reference: {paytm.external_reference}</div>
+        )}
       </div>
 
       <article className="rounded-lg border border-slate-200 bg-white p-5 text-sm">
         <header className="mb-3 border-b border-dashed border-slate-300 pb-3 text-center">
           <div className="font-semibold text-slate-900">{storeName}</div>
+          {storeGstin && <div className="text-xs text-slate-500">GSTIN: {storeGstin}</div>}
           <div className="text-xs text-slate-500">
             Bill #{order.id.slice(0, 8).toUpperCase()} ·{" "}
             {new Date(order.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
@@ -54,6 +78,15 @@ export function Receipt({ bill, storeName, onNext }: { bill: Schemas["BillRead"]
           ))}
           {khata_entry && <Row label="On khata (udhaar)" value={formatINR(khata_entry.amount)} />}
         </dl>
+
+        {taxed && (
+          <dl className="mt-3 space-y-1 border-t border-dashed border-slate-300 pt-3 text-xs text-slate-500">
+            <Row label="Taxable value" value={formatINR(tax.taxable_value)} />
+            <Row label="CGST" value={formatINR(tax.cgst)} />
+            <Row label="SGST" value={formatINR(tax.sgst)} />
+            <Row label="Total GST (incl. in price)" value={formatINR(tax.total_tax)} />
+          </dl>
+        )}
 
         {customer && customer_balance !== null && (
           <p

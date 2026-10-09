@@ -15,6 +15,7 @@ class Merchant(UUIDPk, Timestamps, Base):
     phone: Mapped[str | None] = mapped_column(String(20))
     store_name: Mapped[str] = mapped_column(String(120))
     store_slug: Mapped[str] = mapped_column(String(80), unique=True)  # public Shop URL / QR
+    gstin: Mapped[str | None] = mapped_column(String(15))  # shown on bills once set; not required
 
     users: Mapped[list["User"]] = relationship(back_populates="merchant")
 

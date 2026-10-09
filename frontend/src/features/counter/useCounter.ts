@@ -123,6 +123,14 @@ export function useCounter() {
     onSuccess: onCart,
   });
 
+  /** The bill is settled (checkout, or a payment the backend verified): forget the cart and refresh what a sale changes. */
+  const billCompleted = () => {
+    qc.removeQueries({ queryKey: cartKey(cartId) });
+    setCartId(null);
+    // Stock, recent bills and khata balances all changed: every module reads the same data.
+    for (const key of [["products"], ["orders"], ["khata"], ["customers"]]) qc.invalidateQueries({ queryKey: key });
+  };
+
   const checkout = useMutation({
     mutationFn: async (body: Schemas["CheckoutRequest"]) => {
       const order = await unwrap(
@@ -130,12 +138,7 @@ export function useCounter() {
       );
       return unwrap(api.GET("/api/v1/orders/{order_id}/bill", { params: { path: { order_id: order.id } } }));
     },
-    onSuccess: () => {
-      qc.removeQueries({ queryKey: cartKey(cartId) });
-      setCartId(null);
-      // Stock, recent bills and khata balances all changed: every module reads the same data.
-      for (const key of [["products"], ["orders"], ["khata"], ["customers"]]) qc.invalidateQueries({ queryKey: key });
-    },
+    onSuccess: billCompleted,
     onError: (e) => {
       // A stock shortfall means our product list is stale; refresh it so the warnings show.
       if (e instanceof ApiError && e.code === "insufficient_stock") qc.invalidateQueries({ queryKey: ["products"] });
@@ -151,5 +154,23 @@ export function useCounter() {
     removeItem,
     setCustomer,
     checkout,
+    billCompleted,
   };
+}
+
+/**
+ * Products frequently bought alongside what's already in the cart. Keyed partly on the cart's own
+ * product ids (not just its id) so adding or removing a line refetches the suggestions right away.
+ */
+export function useCrossSell(cartId: string | null, items: Schemas["CartItemRead"][]) {
+  const signature = items
+    .map((i) => i.product_id)
+    .sort()
+    .join(",");
+  return useQuery({
+    queryKey: ["cross-sell", cartId, signature],
+    enabled: cartId !== null && items.length > 0,
+    queryFn: () =>
+      unwrap(api.GET("/api/v1/carts/{cart_id}/cross-sell", { params: { path: { cart_id: cartId! } } })),
+  });
 }

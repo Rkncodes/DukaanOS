@@ -1,3 +1,6 @@
+import uuid
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.core.types import QuantityOut
@@ -6,9 +9,14 @@ from app.modules.vision.schemas import MatchState  # the same four outcomes as e
 
 MAX_TRANSCRIPT_CHARS = 1000
 
+# What was asked of the bill. "add" is the default: anything that is not clearly another command.
+VoiceIntent = Literal["add", "remove", "set_quantity", "total", "clear"]
+
 
 class VoiceRequest(BaseModel):
     transcript: str = Field(min_length=1, max_length=MAX_TRANSCRIPT_CHARS)  # what speech-to-text heard
+    # The open bill, if there is one. "Remove ..." and "change ... quantity" are about what is on it.
+    cart_id: uuid.UUID | None = None
 
 
 class VoiceLine(BaseModel):
@@ -29,4 +37,7 @@ class VoiceLine(BaseModel):
 
 class VoiceResult(BaseModel):
     transcript: str
+    intent: VoiceIntent = "add"
+    # add: the items to add. remove / set_quantity: the items of the open bill that were meant
+    # (matched against that bill only). total / clear: empty; the bill itself is the answer.
     lines: list[VoiceLine]

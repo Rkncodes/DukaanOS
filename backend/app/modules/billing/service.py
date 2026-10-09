@@ -86,9 +86,11 @@ def add_item_by_barcode(
     quantity: Decimal = Decimal(1),
     source: InputSource = InputSource.BARCODE,
 ) -> Cart:
+    # Exact match on this merchant's own, on-sale products. A barcode is unique per merchant in the
+    # database, so there is never a choice to make, and an unknown code is never guessed at.
     product = catalog.find_by_barcode(db, ctx, barcode)
     if product is None:
-        raise NotFound(f"No product with barcode {barcode}")
+        raise NotFound(f"Barcode not found: {barcode}")
     return add_item(db, ctx, cart_id, product.id, quantity, source)
 
 

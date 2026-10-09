@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "../../i18n";
 import { api, unwrap, type Schemas } from "../../lib/api/client";
 import { useCustomers, useKhataBalances } from "../../lib/api/queries";
 import { formatINR } from "../../lib/format";
@@ -12,6 +13,7 @@ type Props = {
 
 /** Attach a customer to the bill: required for khata, optional (but linked) for paid sales. */
 export function CustomerPicker({ customerId, onChange, disabled }: Props) {
+  const { t } = useTranslation();
   const customers = useCustomers();
   const balances = useKhataBalances();
   const qc = useQueryClient();
@@ -39,9 +41,9 @@ export function CustomerPicker({ customerId, onChange, disabled }: Props) {
         <div>
           <div className="font-medium text-slate-900">{selected.name}</div>
           <div className="text-slate-500">
-            {selected.phone ?? "No phone"}
+            {selected.phone ?? t("customer.noPhone")}
             {balance !== undefined && Number(balance) !== 0 && (
-              <span className={Number(balance) > 0 ? "text-red-600" : ""}> · Khata {formatINR(balance)}</span>
+              <span className={Number(balance) > 0 ? "text-red-600" : ""}> · {t("customer.khata", { amount: formatINR(balance) })}</span>
             )}
           </div>
         </div>
@@ -51,7 +53,7 @@ export function CustomerPicker({ customerId, onChange, disabled }: Props) {
           onClick={() => onChange(null)}
           className="text-slate-500 hover:text-slate-800 disabled:opacity-50"
         >
-          Remove
+          {t("common.remove")}
         </button>
       </div>
     );
@@ -74,7 +76,7 @@ export function CustomerPicker({ customerId, onChange, disabled }: Props) {
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="Customer name or phone (optional)"
+        placeholder={t("customer.placeholder")}
         className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none"
       />
       {open && (
@@ -111,7 +113,7 @@ export function CustomerPicker({ customerId, onChange, disabled }: Props) {
                 }
                 className="w-full border-t border-slate-100 px-3 py-2 text-left font-medium text-emerald-700 hover:bg-emerald-50"
               >
-                + Add “{query.trim()}” as new customer
+                {t("customer.addNew", { name: query.trim() })}
               </button>
             </li>
           )}

@@ -22,6 +22,11 @@ Quantity = Annotated[Decimal, Field(gt=0, max_digits=12, decimal_places=3)]
 MoneyOut = Annotated[Decimal, PlainSerializer(lambda v: str(v.quantize(_CENTS)), return_type=str)]
 QuantityOut = Annotated[Decimal, PlainSerializer(lambda v: str(v.quantize(_MILLI)), return_type=str)]
 
+# A GST rate, 0-100 (e.g. 18.00 for 18%). Indian retail has a handful of fixed slabs
+# (0/5/12/18/28%), but nothing here enforces that — merchants can enter any rate.
+Percent = Annotated[Decimal, Field(ge=0, le=100, max_digits=4, decimal_places=2)]
+PercentOut = Annotated[Decimal, PlainSerializer(lambda v: str(v.quantize(_CENTS)), return_type=str)]
+
 
 class Schema(_BaseModel):
     model_config = ConfigDict(from_attributes=True)

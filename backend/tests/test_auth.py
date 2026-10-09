@@ -57,6 +57,28 @@ def test_login_me_logout(make_client):
     assert client.get("/api/v1/auth/me").status_code == 401
 
 
+def test_logout_expires_the_session_cookie_and_closes_every_merchant_route(make_client):
+    client = make_client()
+    slug = register(client, "owner@dukaanos.dev", "My Store")["merchant"]["store_slug"]
+    merchant_routes = ["/api/v1/auth/me", "/api/v1/products", "/api/v1/customers", "/api/v1/khata/balances", "/api/v1/orders"]
+    for url in merchant_routes:
+        assert client.get(url).status_code == 200
+
+    res = client.post("/api/v1/auth/logout")
+    assert res.status_code == 204
+    # The browser is told to drop the cookie: same name, path and flags as it was set with, already expired.
+    set_cookie = res.headers["set-cookie"]
+    assert set_cookie.startswith(f'{settings.session_cookie_name}="";') or set_cookie.startswith(f"{settings.session_cookie_name}=;")
+    assert "Max-Age=0" in set_cookie and "Path=/" in set_cookie and "HttpOnly" in set_cookie
+    assert settings.session_cookie_name not in client.cookies
+
+    for url in merchant_routes:
+        assert client.get(url).status_code == 401, url
+    # Logging out twice is harmless, and the public storefront never needed the session.
+    assert client.post("/api/v1/auth/logout").status_code == 204
+    assert client.get(f"/api/v1/public/stores/{slug}").status_code == 200
+
+
 def test_duplicate_email_rejected(make_client):
     register(make_client(), "dup@dukaanos.dev", "Store One")
     res = make_client().post(

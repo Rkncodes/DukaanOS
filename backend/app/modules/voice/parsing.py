@@ -11,13 +11,14 @@ import re
 from collections.abc import Iterable
 
 from app.modules.vision.matching import words  # shared name normalization
+from app.modules.voice import language
 
 NUMBER_WORDS = {
     "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
     "seven": "7", "eight": "8", "nine": "9", "ten": "10", "eleven": "11", "twelve": "12",
-}  # fmt: skip
-_CONNECTORS = {"and", "plus", "then", "also", "&"}
-_FILLER = {"add", "please", "give", "me", "i", "want", "need", "put", "get", "ok", "okay"}
+} | language.NUMBER_WORDS  # fmt: skip
+_CONNECTORS = {"and", "plus", "then", "also", "&"} | language.CONNECTORS
+_FILLER = {"add", "please", "give", "me", "i", "want", "need", "put", "get", "ok", "okay"} | language.FILLER
 _COUNT_UNITS = {"pc", "pcs", "piece", "pieces", "pkt", "pkts", "packet", "packets", "pack", "packs", "dozen"}
 _SIZE_UNITS = {"kg", "kgs", "g", "gm", "gms", "gram", "grams", "ml", "l", "ltr", "litre", "litres", "liter", "liters"}
 
@@ -51,10 +52,14 @@ class _Names:
         )
 
 
-def _chunks(clause: str, names: _Names) -> list[list[tuple[str, bool]]]:
-    """Tokens as (text, is a quantity), cut at "and"-like words unless the catalogue joins them."""
+def _chunks(clause: str, names: _Names, ignore: frozenset[str] = frozenset()) -> list[list[tuple[str, bool]]]:
+    """Tokens as (text, is a quantity), cut at "and"-like words unless the catalogue joins them.
+    `ignore`: more words that only belong to the sentence (a command's own words)."""
     tokens = [t.strip("?!\"'()") for t in clause.split()]
-    tokens = [t for t in tokens if t and (_word(t) not in _FILLER or _word(t) in names.words)]
+    # "kar do", "जोड़ दो": that "do" is the verb, not the number two.
+    tokens = [t for i, t in enumerate(tokens) if not (_word(t) in ("do", "दो") and i > 0 and _word(tokens[i - 1]) in language.VERBS)]
+    tokens = [t for t in tokens if not language.sentence_word(_word(t))]  # "பில்லில்", "যোগ", "చేర్చండి", "जोडा"
+    tokens = [t for t in tokens if t and (_word(t) not in _FILLER | ignore or _word(t) in names.words)]
     chunks: list[list[tuple[str, bool]]] = [[]]
     for i, token in enumerate(tokens):
         low = _word(token)
@@ -94,11 +99,12 @@ def _items(chunk: list[tuple[str, bool]]) -> list[str]:
     return [" ".join(item) for item in items if item]
 
 
-def split_items(transcript: str, names: Iterable[str] = ()) -> list[str]:
-    """`names` must be one merchant's product names. Number words become digits ("two" -> "2")."""
+def split_items(transcript: str, names: Iterable[str] = (), ignore: Iterable[str] = ()) -> list[str]:
+    """`names` must be one merchant's product names. Number words become digits ("two", "do", "दो" -> "2").
+    English, Hindi and Hinglish are read alike: only the words of the sentence differ (language)."""
     catalogue = _Names(names)
     lines = []
-    for clause in _CLAUSE.split(_TO_THE_BILL.sub(" ", transcript)):
-        for chunk in _chunks(clause, catalogue):
+    for clause in _CLAUSE.split(_TO_THE_BILL.sub(" ", language.plain(transcript))):
+        for chunk in _chunks(clause, catalogue, frozenset(ignore)):
             lines.extend(item for item in _items(chunk) if re.search(r"[^\W\d_]", item))
     return lines

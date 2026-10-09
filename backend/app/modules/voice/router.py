@@ -12,4 +12,4 @@ router = APIRouter(prefix="/voice", tags=["voice"])
 def parse_transcript(data: VoiceRequest, db: DbSession, ctx: Tenant) -> VoiceResult:
     """Turn a speech-to-text transcript into items matched to this merchant's catalogue.
     Read-only: nothing is stored and nothing is added to a cart."""
-    return service.parse_transcript(db, ctx, data.transcript)
+    return service.parse_transcript(db, ctx, data.transcript, data.cart_id)

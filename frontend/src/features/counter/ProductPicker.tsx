@@ -1,21 +1,28 @@
 import { useRef, useState } from "react";
+import { useTranslation } from "../../i18n";
 import type { Schemas } from "../../lib/api/client";
 import { formatINR, formatQuantity } from "../../lib/format";
-import { resolveScan, searchProducts } from "./bill";
+import { availableStock, resolveScan, searchProducts } from "./bill";
 
 type Props = {
   products: Schemas["ProductRead"][];
+  /** The open bill's lines: each product shows its stock minus what the bill already holds. */
+  cartItems: Schemas["CartItemRead"][];
   onAdd: (item: Schemas["CartItemAdd"]) => Promise<unknown>;
   busy: boolean;
 };
 
 /** One box for both barcode scanners (which type the code + Enter) and name search. */
-export function ProductPicker({ products, onAdd, busy }: Props) {
+export function ProductPicker({ products, cartItems, onAdd, busy }: Props) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const matches = searchProducts(query, products);
+  const available = availableStock(products, cartItems);
+  /** One more unit of this product no longer fits in what is left. */
+  const soldOut = (productId: string) => (available.get(productId) ?? 0) < 1;
 
   async function add(item: Schemas["CartItemAdd"]) {
     setMessage(null);
@@ -23,7 +30,7 @@ export function ProductPicker({ products, onAdd, busy }: Props) {
       await onAdd(item);
       setQuery("");
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Could not add item");
+      setMessage(e instanceof Error ? e.message : t("picker.couldNotAdd"));
     } finally {
       inputRef.current?.focus();
     }
@@ -31,7 +38,14 @@ export function ProductPicker({ products, onAdd, busy }: Props) {
 
   function onEnter() {
     const action = resolveScan(query, products);
-    if (action.kind === "barcode") void add({ barcode: action.barcode, source: "barcode" });
+    const product =
+      action.kind === "barcode"
+        ? products.find((p) => p.barcode === action.barcode)
+        : action.kind === "product"
+          ? products.find((p) => p.id === action.productId)
+          : undefined;
+    if (product && soldOut(product.id)) setMessage(t("picker.noMoreInStock", { name: product.name }));
+    else if (action.kind === "barcode") void add({ barcode: action.barcode, source: "barcode" });
     else if (action.kind === "product") void add({ product_id: action.productId, source: "manual" });
     else setMessage(action.reason || null);
   }
@@ -39,7 +53,7 @@ export function ProductPicker({ products, onAdd, busy }: Props) {
   return (
     <div className="flex min-h-0 flex-col">
       <label htmlFor="counter-scan" className="mb-1 block text-sm font-medium text-slate-600">
-        Scan barcode or search product
+        {t("picker.label")}
       </label>
       <input
         id="counter-scan"
@@ -60,21 +74,21 @@ export function ProductPicker({ products, onAdd, busy }: Props) {
             setMessage(null);
           }
         }}
-        placeholder="e.g. 8901058000017 or maggi"
+        placeholder={t("picker.placeholder")}
         className="w-full rounded-md border border-slate-300 px-3 py-2.5 text-base focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
       />
       <p className="mt-1 h-5 text-sm text-red-600" role="status">
         {message}
       </p>
 
-      <ul className="mt-2 grid grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
+      <ul aria-label={t("picker.products")} className="mt-2 grid grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 xl:grid-cols-3">
         {matches.map((p) => {
-          const outOfStock = Number(p.stock_quantity) <= 0;
+          const left = available.get(p.id) ?? 0;
           return (
             <li key={p.id}>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || soldOut(p.id)}
                 onClick={() => void add({ product_id: p.id, source: "manual" })}
                 className="flex w-full flex-col rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-emerald-400 hover:bg-emerald-50 disabled:opacity-60"
               >
@@ -84,15 +98,15 @@ export function ProductPicker({ products, onAdd, busy }: Props) {
                     {formatINR(p.price)}
                     <span className="font-normal text-slate-400"> / {p.unit}</span>
                   </span>
-                  <span className={outOfStock ? "text-red-600" : "text-slate-500"}>
-                    {outOfStock ? "Out of stock" : `${formatQuantity(p.stock_quantity)} left`}
+                  <span className={left <= 0 ? "text-red-600" : "text-slate-500"}>
+                    {t("picker.left", { quantity: formatQuantity(String(left)) })}
                   </span>
                 </span>
               </button>
             </li>
           );
         })}
-        {matches.length === 0 && <li className="text-sm text-slate-500">No products match.</li>}
+        {matches.length === 0 && <li className="text-sm text-slate-500">{t("picker.noMatch")}</li>}
       </ul>
     </div>
   );

@@ -5,7 +5,7 @@ from app.core.db import DbSession
 from app.core.security import create_access_token
 from app.modules.auth import service
 from app.modules.auth.deps import CurrentUser
-from app.modules.auth.schemas import LoginRequest, MerchantRead, RegisterRequest, SessionRead, UserRead
+from app.modules.auth.schemas import LoginRequest, MerchantRead, MerchantUpdate, RegisterRequest, SessionRead, UserRead
 from app.modules.merchants.models import User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -56,3 +56,10 @@ def logout(response: Response) -> None:
 @router.get("/me")
 def me(user: CurrentUser) -> SessionRead:
     return _session(user)
+
+
+@router.patch("/merchant")
+def update_merchant(data: MerchantUpdate, db: DbSession, user: CurrentUser) -> MerchantRead:
+    merchant = service.update_merchant(db, user, data)
+    db.commit()
+    return merchant

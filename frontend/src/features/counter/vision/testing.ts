@@ -11,6 +11,7 @@ export const P = (id: string, name: string, price: string) =>
     id,
     name,
     price,
+    tax_rate: "0.00",
     stock_quantity: "50.000",
     unit: "pcs",
     barcode: null,
@@ -116,11 +117,13 @@ export function createFakeBackend() {
           product_name: product.name,
           quantity: quantity.toFixed(3),
           unit_price: product.price,
+          tax_rate: product.tax_rate,
           source,
         });
     }
     for (const l of lines) l.line_total = (Number(l.quantity) * Number(l.unit_price)).toFixed(2);
     state.cart!.subtotal = lines.reduce((s, l) => s + Number(l.line_total), 0).toFixed(2);
+    state.cart!.tax_summary = { taxable_value: state.cart!.subtotal, cgst: "0.00", sgst: "0.00", total_tax: "0.00" };
     return state.cart;
   }
 
@@ -139,7 +142,15 @@ export function createFakeBackend() {
     const reference = /^POST \/api\/v1\/vision\/products\/([^/]+)\/reference-images$/.exec(route);
     if (reference) return json({ id: "ref-1", product_id: reference[1], created_at: "" }, 201);
     if (route === "POST /api/v1/carts") {
-      state.cart = { id: "cart-1", customer_id: null, channel: "counter", status: "open", items: [], subtotal: "0.00" };
+      state.cart = {
+        id: "cart-1",
+        customer_id: null,
+        channel: "counter",
+        status: "open",
+        items: [],
+        subtotal: "0.00",
+        tax_summary: { taxable_value: "0.00", cgst: "0.00", sgst: "0.00", total_tax: "0.00" },
+      };
       return json(state.cart, 201);
     }
     if (route === "GET /api/v1/carts/cart-1") return json(state.cart);

@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { Icon } from "../../app/icons";
+import { PRODUCT_LINE } from "../../app/shell";
 import { useLogin, useRegister } from "./session";
 
 const input = "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-emerald-500 focus:outline-none";
@@ -24,8 +26,14 @@ export function AuthPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-bold text-emerald-700">DukaanOS</h1>
-        <p className="mb-6 text-sm text-slate-500">
+        <div className="flex items-center gap-2.5">
+          <span className="rounded-lg bg-emerald-600 p-1.5 text-white">
+            <Icon name="store" className="h-5 w-5" />
+          </span>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900">DukaanOS</h1>
+        </div>
+        <p className="mt-1 text-sm text-slate-500">{PRODUCT_LINE}</p>
+        <p className="mb-4 mt-5 text-sm font-medium text-slate-700">
           {mode === "login" ? "Log in to your dukaan" : "Register your dukaan"}
         </p>
 

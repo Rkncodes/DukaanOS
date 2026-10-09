@@ -9,7 +9,7 @@ from app.core.errors import DomainValidationError
 from app.core.tenancy import TenantContext, get_owned, scoped
 from app.modules.customers.models import Customer
 from app.modules.khata.models import KhataEntry
-from app.modules.khata.schemas import KhataBalance
+from app.modules.khata.schemas import KhataBalance, KhataEntryRead, LedgerEntryRead
 from app.modules.payments import service as payments
 
 _signed_amount = case(
@@ -82,6 +82,18 @@ def list_entries(db: Session, ctx: TenantContext, customer_id: uuid.UUID) -> lis
         .order_by(KhataEntry.created_at.desc(), KhataEntry.id)
     )
     return list(db.scalars(stmt))
+
+
+def list_ledger(db: Session, ctx: TenantContext, customer_id: uuid.UUID) -> list[LedgerEntryRead]:
+    """The customer's entries, newest first, each with the balance that stood once it was recorded."""
+    entries = list_entries(db, ctx, customer_id)
+    running = Decimal(0)
+    ledger: list[LedgerEntryRead] = []
+    for entry in reversed(entries):
+        running += entry.amount if entry.type == KhataEntryType.CREDIT else -entry.amount
+        ledger.append(LedgerEntryRead(**KhataEntryRead.model_validate(entry).model_dump(), balance_after=running))
+    ledger.reverse()
+    return ledger
 
 
 def credit_for_order(db: Session, ctx: TenantContext, order_id: uuid.UUID) -> KhataEntry | None:

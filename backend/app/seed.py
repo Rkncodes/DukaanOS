@@ -1,7 +1,9 @@
 """Development seed: one demo merchant, built through the real services.
 
-    uv run python -m app.seed          # create if missing
-    uv run python -m app.seed --reset  # delete and recreate the demo merchant
+    uv run python -m app.seed            # create if missing
+    uv run python -m app.seed --reset    # delete and recreate the demo merchant
+    uv run python -m app.seed --restock  # existing demo merchant: put the demo products back at
+                                         # their demo shelf level. Changes stock only; deletes nothing.
 
 Login: ramesh@dukaanos.dev / demo1234
 Barcodes are demo EAN-13 values (valid check digit), not real product barcodes.
@@ -28,43 +30,63 @@ from app.modules.catalog.schemas import CategoryCreate, ProductCreate
 from app.modules.customers import service as customers
 from app.modules.customers.models import Customer
 from app.modules.customers.schemas import CustomerCreate
+from app.modules.inventory import service as inventory
 from app.modules.khata import service as khata
 from app.modules.khata.models import KhataEntry
 from app.modules.merchants.models import Merchant
 from app.modules.orders import service as orders
 from app.modules.orders.models import Order
-from app.modules.payments.models import Payment
+from app.modules.payments.models import Payment, PaytmPayment
 
 DEMO_EMAIL = "ramesh@dukaanos.dev"
 DEMO_PASSWORD = "demo1234"
 DEMO_SLUG = "ramesh-general-store"
 
 # name, category, price, cost_price, stock, unit
+# `stock` is the demo shelf level: what the store holds once seeded (see restock). Fixed values of
+# 60 / 65 / 70 so the demo looks like a working kirana: fast movers 70, bulky or slow items 60.
 PRODUCTS = [
-    ("Kurkure Masala Munch 90g", "Snacks", "20", "16.50", 48, "pcs"),
-    ("Lays Classic Salted 52g", "Snacks", "20", "16.50", 60, "pcs"),
-    ("Maggi 2-Minute Noodles 70g", "Instant Food", "14", "12.00", 120, "pcs"),
-    ("Coke 750ml", "Beverages", "40", "33.00", 36, "pcs"),
-    ("Pepsi 750ml", "Beverages", "40", "33.00", 30, "pcs"),
-    ("Thums Up 750ml", "Beverages", "40", "33.00", 30, "pcs"),
-    ("Amul Taaza Milk 500ml", "Dairy", "28", "26.00", 40, "pcs"),
-    ("Parle-G Biscuits 250g", "Biscuits & Chocolates", "25", "21.00", 80, "pcs"),
-    ("Britannia Good Day 100g", "Biscuits & Chocolates", "30", "25.00", 40, "pcs"),
-    ("Dairy Milk Chocolate 50g", "Biscuits & Chocolates", "50", "42.00", 45, "pcs"),
-    ("Aashirvaad Atta 5kg", "Staples", "295", "270.00", 20, "pcs"),
-    ("Tata Salt 1kg", "Staples", "28", "24.00", 50, "pcs"),
-    ("Surf Excel Easy Wash 1kg", "Household", "140", "122.00", 18, "pcs"),
-    ("Dettol Antiseptic Liquid 125ml", "Personal Care", "75", "64.00", 15, "pcs"),
-    ("Colgate Strong Teeth 200g", "Personal Care", "110", "94.00", 25, "pcs"),
-    ("Cadbury 5 Star 40g", "Biscuits & Chocolates", "20", "17.00", 40, "pcs"),
-    ("Britannia Treat Croissant 45g", "Biscuits & Chocolates", "30", "25.00", 30, "pcs"),
-    ("Doritos Nacho Cheese 44g", "Snacks", "20", "16.50", 40, "pcs"),
-    ("Parle Hide & Seek", "Biscuits & Chocolates", "10", "8.50", 40, "pcs"),
-    ("Maggi 2-Minute Noodles 35g", "Instant Food", "7", "6.00", 60, "pcs"),
-    ("Lotte Choco Pie 28g", "Biscuits & Chocolates", "10", "8.50", 40, "pcs"),
-    ("Coke", "Beverages", "20", "16.50", 36, "pcs"),
-    ("Maliban Choco Wafer 30g", "Biscuits & Chocolates", "10", "8.50", 40, "pcs"),
+    ("Kurkure Masala Munch 90g", "Snacks", "20", "16.50", 70, "pcs"),
+    ("Lays Classic Salted 52g", "Snacks", "20", "16.50", 70, "pcs"),
+    ("Maggi 2-Minute Noodles 70g", "Instant Food", "14", "12.00", 70, "pcs"),
+    ("Coke 750ml", "Beverages", "40", "33.00", 65, "pcs"),
+    ("Pepsi 750ml", "Beverages", "40", "33.00", 65, "pcs"),
+    ("Thums Up 750ml", "Beverages", "40", "33.00", 65, "pcs"),
+    ("Amul Taaza Milk 500ml", "Dairy", "28", "26.00", 70, "pcs"),
+    ("Parle-G Biscuits 250g", "Biscuits & Chocolates", "25", "21.00", 70, "pcs"),
+    ("Britannia Good Day 100g", "Biscuits & Chocolates", "30", "25.00", 65, "pcs"),
+    ("Dairy Milk Chocolate 50g", "Biscuits & Chocolates", "50", "42.00", 65, "pcs"),
+    ("Aashirvaad Atta 5kg", "Staples", "295", "270.00", 60, "pcs"),
+    ("Tata Salt 1kg", "Staples", "28", "24.00", 65, "pcs"),
+    ("Surf Excel Easy Wash 1kg", "Household", "140", "122.00", 60, "pcs"),
+    ("Dettol Antiseptic Liquid 125ml", "Personal Care", "75", "64.00", 60, "pcs"),
+    ("Colgate Strong Teeth 200g", "Personal Care", "110", "94.00", 60, "pcs"),
+    ("Cadbury 5 Star 40g", "Biscuits & Chocolates", "20", "17.00", 70, "pcs"),
+    ("Britannia Treat Croissant 45g", "Biscuits & Chocolates", "30", "25.00", 60, "pcs"),
+    ("Doritos Nacho Cheese 44g", "Snacks", "20", "16.50", 65, "pcs"),
+    ("Parle Hide & Seek", "Biscuits & Chocolates", "10", "8.50", 65, "pcs"),
+    ("Maggi 2-Minute Noodles 35g", "Instant Food", "7", "6.00", 70, "pcs"),
+    ("Lotte Choco Pie 28g", "Biscuits & Chocolates", "10", "8.50", 65, "pcs"),
+    ("Coke", "Beverages", "20", "16.50", 65, "pcs"),
+    ("Maliban Choco Wafer 30g", "Biscuits & Chocolates", "10", "8.50", 60, "pcs"),
+    # Low shelf level + heavy recent sales on purpose: this is the one product that should trip
+    # the "stockout risk" insight (see app.modules.insights) against the demo data.
+    ("Red Bull Energy Drink 250ml", "Beverages", "110", "90.00", 8, "pcs"),
 ]
+
+# Approximate Indian GST slabs by category (not a certified HSN lookup, just realistic demo data).
+CATEGORY_GST = {
+    "Snacks": Decimal("12"),
+    "Instant Food": Decimal("18"),
+    "Beverages": Decimal("28"),
+    "Dairy": Decimal("5"),
+    "Biscuits & Chocolates": Decimal("18"),
+    "Staples": Decimal("5"),
+    "Household": Decimal("18"),
+    "Personal Care": Decimal("18"),
+}
+
+DEMO_GSTIN = "07AAPFG2707M1Z5"
 
 CUSTOMERS = [
     ("Rahul Sharma", "9810010001"),
@@ -107,6 +129,7 @@ def seed(db: Session) -> Merchant:
             phone="9810000000",
         ),
     )
+    user.merchant.gstin = DEMO_GSTIN
     ctx = TenantContext(merchant_id=user.merchant_id, user_id=user.id, role=user.role)
     clock = _Clock()
 
@@ -126,6 +149,7 @@ def seed(db: Session) -> Merchant:
                 barcode=_ean13(i),
                 price=Decimal(price),
                 cost_price=Decimal(cost),
+                tax_rate=CATEGORY_GST[category],
                 stock_quantity=Decimal(stock),
                 unit=unit,
             ),
@@ -188,13 +212,44 @@ def seed(db: Session) -> Merchant:
     sale(0, 9, [("Maggi 2-Minute Noodles 70g", 6), ("Amul Taaza Milk 500ml", 2)], CheckoutMethod.KHATA, "Rahul",
          InputSource.VOICE)
 
+    # Neha used to come back every few days, then stopped: a second order gives her a cadence,
+    # and nothing since day 9 means she's overdue for a "customer win-back" insight.
+    sale(13, 9, [("Parle-G Biscuits 250g", 2), ("Maggi 2-Minute Noodles 70g", 1)], CheckoutMethod.CASH, "Neha")
+
+    # Recent heavy demand on a low-shelf-level product: a "stockout risk" insight. restock() below
+    # settles every product back to its PRODUCTS shelf level regardless of what sold, so this
+    # temporary top-up just gives enough physical stock to cover the sales below as they happen;
+    # the demo ends with Red Bull back at its low declared level (8), same as everyone else.
+    inventory.adjust_stock(db, ctx, products["Red Bull Energy Drink 250ml"], Decimal(15))
+    sale(4, 10, [("Red Bull Energy Drink 250ml", 7)], CheckoutMethod.CASH)
+    sale(2, 10, [("Red Bull Energy Drink 250ml", 6)], CheckoutMethod.UPI)
+    sale(1, 11, [("Red Bull Energy Drink 250ml", 5)], CheckoutMethod.CASH)
+
+    restock(db, ctx)  # the demo history above sold some: the shelves start full
     db.flush()
     return user.merchant
 
 
+def restock(db: Session, ctx: TenantContext) -> list[tuple[str, Decimal, Decimal]]:
+    """Bring this merchant's demo products to their demo shelf level (PRODUCTS), through the
+    inventory service like any stock correction. Touches nothing but stock_quantity, and only of
+    products named in PRODUCTS: orders, carts, customers, khata and payments are left as they are.
+    Returns (name, before, after) for every product that changed."""
+    levels = {name: Decimal(stock) for name, _category, _price, _cost, stock, _unit in PRODUCTS}
+    changed = []
+    for product in catalog.list_products(db, ctx, include_inactive=True):
+        level = levels.get(product.name)
+        if level is None or product.stock_quantity == level:
+            continue
+        before = product.stock_quantity
+        inventory.adjust_stock(db, ctx, product.id, level - before)
+        changed.append((product.name, before, level))
+    return changed
+
+
 def _purge_merchant(db: Session, merchant_id) -> None:
     """Dev-only. Children first: history tables deliberately don't cascade from products."""
-    for model in (KhataEntry, Payment, Order, Cart, Product, Category, Customer):
+    for model in (PaytmPayment, KhataEntry, Payment, Order, Cart, Product, Category, Customer):
         db.execute(delete(model).where(model.merchant_id == merchant_id))
     db.execute(delete(Merchant).where(Merchant.id == merchant_id))  # cascades users
 
@@ -203,6 +258,16 @@ def main() -> None:
     reset = "--reset" in sys.argv
     with SessionLocal() as db:
         existing = db.scalar(select(Merchant).where(Merchant.store_slug == DEMO_SLUG))
+        if "--restock" in sys.argv:
+            if existing is None:
+                print("No demo merchant to restock. Run without --restock to create it.")
+                return
+            changed = restock(db, TenantContext(merchant_id=existing.id))
+            db.commit()
+            for name, before, after in changed:
+                print(f"  {name}: {before.normalize():f} -> {after.normalize():f}")
+            print(f"Restocked {len(changed)} demo products of {existing.store_name}. Nothing else was changed.")
+            return
         if existing is not None:
             if not reset:
                 print(f"Demo merchant already exists ({DEMO_EMAIL}). Use --reset to recreate.")

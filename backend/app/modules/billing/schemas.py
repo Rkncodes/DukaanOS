@@ -5,7 +5,8 @@ from decimal import Decimal
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.enums import CartStatus, Channel, CheckoutMethod, InputSource
-from app.core.types import Money, MoneyOut, Quantity, QuantityOut, Schema
+from app.core.tax import TaxSummary
+from app.core.types import Money, MoneyOut, PercentOut, Quantity, QuantityOut, Schema
 
 
 class CartCreate(BaseModel):
@@ -54,6 +55,7 @@ class CartItemRead(Schema):
     product_name: str
     quantity: QuantityOut
     unit_price: MoneyOut
+    tax_rate: PercentOut
     line_total: MoneyOut
     source: InputSource
 
@@ -65,6 +67,7 @@ class CartRead(Schema):
     status: CartStatus
     items: list[CartItemRead]
     subtotal: MoneyOut
+    tax_summary: TaxSummary
     created_at: datetime
     updated_at: datetime
 

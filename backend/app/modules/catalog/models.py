@@ -22,6 +22,7 @@ class Product(UUIDPk, MerchantScoped, Timestamps, Base):
         CheckConstraint("price >= 0", name="price_non_negative"),
         CheckConstraint("cost_price IS NULL OR cost_price >= 0", name="cost_price_non_negative"),
         CheckConstraint("stock_quantity >= 0", name="stock_non_negative"),
+        CheckConstraint("tax_rate >= 0 AND tax_rate <= 100", name="tax_rate_valid"),
     )
 
     category_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"))
@@ -30,6 +31,9 @@ class Product(UUIDPk, MerchantScoped, Timestamps, Base):
     barcode: Mapped[str | None] = mapped_column(String(64))
     price: Mapped[Decimal]
     cost_price: Mapped[Decimal | None]
+    # GST rate, 0-100 (e.g. 18.00 for 18%). `price` is the MRP: this rate is used only to
+    # explain how much of it is tax (app.core.tax), never to change what a customer pays.
+    tax_rate: Mapped[Decimal] = mapped_column(default=Decimal(0))
     # Only mutated through app.modules.inventory.service after creation.
     stock_quantity: Mapped[Decimal] = mapped_column(QUANTITY, default=Decimal(0))
     unit: Mapped[str] = mapped_column(String(16), default="pcs")

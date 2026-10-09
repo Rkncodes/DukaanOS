@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     port: 5173,
     // Same-origin in dev: the HTTP-only session cookie just works, no CORS.
-    proxy: { "/api": "http://localhost:8000" },
+    proxy: { "/api": "http://localhost:8004" },
   },
   test: { environment: "node" },
 });

@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.types import Money, MoneyOut, QuantityOut, Schema
+from app.core.types import Money, MoneyOut, Percent, PercentOut, QuantityOut, Schema
 
 
 class CategoryCreate(BaseModel):
@@ -27,6 +27,7 @@ class ProductBase(BaseModel):
     barcode: str | None = Field(default=None, max_length=64)
     price: Money
     cost_price: Money | None = None
+    tax_rate: Percent = Decimal(0)
     unit: str = Field(default="pcs", max_length=16)
     image_url: str | None = Field(default=None, max_length=500)
 
@@ -47,6 +48,7 @@ class ProductUpdate(BaseModel):
     barcode: str | None = Field(default=None, max_length=64)
     price: Money | None = None
     cost_price: Money | None = None
+    tax_rate: Percent | None = None
     unit: str | None = Field(default=None, max_length=16)
     image_url: str | None = Field(default=None, max_length=500)
     is_active: bool | None = None
@@ -60,6 +62,7 @@ class ProductRead(Schema):
     barcode: str | None
     price: MoneyOut
     cost_price: MoneyOut | None
+    tax_rate: PercentOut
     stock_quantity: QuantityOut
     unit: str
     image_url: str | None

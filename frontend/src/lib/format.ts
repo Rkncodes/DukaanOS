@@ -8,3 +8,8 @@ export function formatINR(amount: string | number): string {
 export function formatQuantity(quantity: string): string {
   return String(Number(quantity));
 }
+
+/** The short number an order or bill is called by, for merchant and customer alike. */
+export function orderNumber(orderId: string): string {
+  return `#${orderId.slice(0, 8).toUpperCase()}`;
+}

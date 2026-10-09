@@ -2,10 +2,12 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
+    from app.integrations.groq import GroqConfig
+    from app.integrations.paytm import PaytmConfig
     from app.integrations.vision_real import RealVisionConfig
     from app.modules.vision.matching import MatchingConfig
 
@@ -56,6 +58,39 @@ class Settings(BaseSettings):
     vision_reference_floor: float = Field(default=0.65, ge=-1, le=1)  # reference-photo similarity: no support...
     vision_reference_strong: float = Field(default=0.85, ge=-1, le=1)  # ...full support
 
+    # Paytm payment gateway (Counter "Pay with Paytm"). Off by default: the app runs without it.
+    # When switched on, PAYTM_MID and PAYTM_MERCHANT_KEY are required (the app refuses to start
+    # without them). "sandbox" (default) talks to Paytm's staging host; "production" takes real
+    # money and is only accepted together with ENV=prod.
+    paytm_enabled: bool = False
+    paytm_env: Literal["sandbox", "production"] = "sandbox"
+    paytm_mid: str | None = None
+    paytm_merchant_key: SecretStr | None = None  # never logged, never sent to the browser
+    paytm_website: str | None = None  # None -> WEBSTAGING (sandbox) / DEFAULT (production)
+    paytm_callback_url: str | None = None  # optional; otherwise the URL configured for PAYTM_WEBSITE is used
+    paytm_timeout_seconds: float = Field(default=15, gt=0, le=60)
+    # Check Paytm's checksum on a status response before a payment counts as received.
+    paytm_verify_response_signature: bool = True
+
+    # Salaahkaar (the assistant). It answers through Groq's OpenAI-compatible API, and only by
+    # calling DukaanOS's own tools (app.modules.assistant.tools). Without GROQ_API_KEY the app
+    # runs normally and the assistant reports itself unavailable.
+    groq_api_key: SecretStr | None = None  # backend only: never logged, never sent to the browser
+    groq_model: str = "openai/gpt-oss-120b"
+    groq_timeout_seconds: float = Field(default=30, gt=0, le=120)
+    # The store's offset from UTC in minutes, for "today" (default +05:30, India).
+    store_utc_offset_minutes: int = Field(default=330, ge=-720, le=840)
+
+    @property
+    def groq(self) -> "GroqConfig | None":
+        """None when no API key is set: the assistant is then unavailable."""
+        from app.integrations.groq import GroqConfig
+
+        key = self.groq_api_key.get_secret_value().strip() if self.groq_api_key else ""
+        if not key:
+            return None
+        return GroqConfig(api_key=key, model=self.groq_model, timeout_seconds=self.groq_timeout_seconds)
+
     @property
     def effective_cookie_secure(self) -> bool:
         return self.env == "prod" if self.cookie_secure is None else self.cookie_secure
@@ -96,6 +131,43 @@ class Settings(BaseSettings):
             raise ValueError("VISION_MIN_SCORE must not exceed VISION_MATCH_SCORE")
         if self.vision_reference_floor >= self.vision_reference_strong:
             raise ValueError("VISION_REFERENCE_FLOOR must be below VISION_REFERENCE_STRONG")
+        return self
+
+    @property
+    def paytm(self) -> "PaytmConfig | None":
+        """None when Paytm is switched off."""
+        from app.integrations.paytm import HOSTS, WEBSITES, PaytmConfig
+
+        if not self.paytm_enabled:
+            return None
+        assert self.paytm_mid and self.paytm_merchant_key  # guaranteed by _paytm_is_fully_configured
+        return PaytmConfig(
+            environment=self.paytm_env,
+            host=HOSTS[self.paytm_env],
+            mid=self.paytm_mid,
+            merchant_key=self.paytm_merchant_key.get_secret_value(),
+            website=self.paytm_website or WEBSITES[self.paytm_env],
+            callback_url=self.paytm_callback_url,
+            timeout_seconds=self.paytm_timeout_seconds,
+            verify_response_signature=self.paytm_verify_response_signature,
+        )
+
+    @model_validator(mode="after")
+    def _paytm_is_fully_configured(self) -> "Settings":
+        if not self.paytm_enabled:
+            return self
+        missing = [
+            name
+            for name, value in (("PAYTM_MID", self.paytm_mid), ("PAYTM_MERCHANT_KEY", self.paytm_merchant_key))
+            if value is None or not (value.get_secret_value() if isinstance(value, SecretStr) else value).strip()
+        ]
+        if missing:
+            raise ValueError(
+                f"PAYTM_ENABLED=true needs {' and '.join(missing)} (Paytm dashboard > API keys). "
+                "Set them in backend/.env, or set PAYTM_ENABLED=false to run without Paytm."
+            )
+        if self.paytm_env == "production" and self.env != "prod":
+            raise ValueError("PAYTM_ENV=production takes real money and is only allowed with ENV=prod. Use PAYTM_ENV=sandbox.")
         return self
 
     @model_validator(mode="after")

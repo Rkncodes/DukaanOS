@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.enums import UserRole
 from app.core.errors import Conflict, Unauthorized
 from app.core.security import hash_password, verify_password
-from app.modules.auth.schemas import RegisterRequest
+from app.modules.auth.schemas import MerchantUpdate, RegisterRequest
 from app.modules.merchants.models import Merchant, User
 
 # Verified against when the email is unknown, so response time doesn't reveal which emails exist.
@@ -49,6 +49,13 @@ def register(db: Session, data: RegisterRequest) -> User:
     db.add_all([merchant, user])
     db.flush()
     return user
+
+
+def update_merchant(db: Session, user: User, data: MerchantUpdate) -> Merchant:
+    merchant = user.merchant
+    merchant.gstin = data.gstin
+    db.flush()
+    return merchant
 
 
 def authenticate(db: Session, email: str, password: str) -> User:

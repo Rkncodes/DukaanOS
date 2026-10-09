@@ -110,9 +110,24 @@ beforeEach(() => {
   FakeRecognition.sessions = [];
   speechWindow.webkitSpeechRecognition = FakeRecognition; // as Chrome exposes it
   server.handle = async (req) => {
-    if (req.method === "POST" && new URL(req.url).pathname === "/api/v1/voice/parse") {
+    const path = new URL(req.url).pathname;
+    if (req.method === "POST" && path === "/api/v1/voice/parse") {
       parseCalls.push(await req.clone().json());
       return parseVoice();
+    }
+    // The bill's own line operations (the shared fake has no need of them): change a quantity, remove a line.
+    const item = /^\/api\/v1\/carts\/cart-1\/items\/(.+)$/.exec(path);
+    if (item && (req.method === "PATCH" || req.method === "DELETE")) {
+      const body = req.method === "PATCH" ? await req.clone().json() : null;
+      backend.state.calls.push({ method: req.method, path, body });
+      const cart = backend.state.cart as { items: Record<string, string>[]; subtotal: string };
+      if (req.method === "DELETE") cart.items = cart.items.filter((l) => l.id !== item[1]);
+      for (const l of cart.items) {
+        if (l.id === item[1] && body) l.quantity = Number(body.quantity).toFixed(3);
+        l.line_total = (Number(l.quantity) * Number(l.unit_price)).toFixed(2);
+      }
+      cart.subtotal = cart.items.reduce((s, l) => s + Number(l.line_total), 0).toFixed(2);
+      return json(cart);
     }
     return backend.handle(req);
   };
@@ -124,7 +139,7 @@ afterEach(() => {
   delete speechWindow.SpeechRecognition;
 });
 
-async function openVoice(user = userEvent.setup()) {
+async function openVoice(user = userEvent.setup(), { tap = true } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
@@ -132,8 +147,11 @@ async function openVoice(user = userEvent.setup()) {
     </QueryClientProvider>,
   );
   await user.click(await screen.findByRole("button", { name: "Add by Voice" }));
+  if (tap) await user.click(screen.getByRole("button", { name: "Tap to speak" })); // the microphone only opens on a tap
   return user;
 }
+
+const transcript = () => (screen.getByLabelText("Transcript") as HTMLInputElement).value;
 
 const session = () => FakeRecognition.sessions.at(-1)!;
 
@@ -151,8 +169,14 @@ const addButton = (n: number) => screen.getByRole("button", { name: `Add ${n} to
 const billPanel = () => screen.getByRole("heading", { name: "Bill" }).parentElement!;
 
 describe("Counter: add by voice", () => {
-  it("listens as soon as it opens, shows the words as they are heard, and parses only after Stop", async () => {
-    const user = await openVoice();
+  it("listens only after a tap, shows the words as they are heard, and parses only after Stop", async () => {
+    const user = await openVoice(undefined, { tap: false });
+
+    // Opening Voice mode does not open the microphone.
+    expect(FakeRecognition.sessions).toHaveLength(0);
+    expect(screen.queryByText("Listening… Speak your items.")).toBeNull();
+    expect(screen.getByText("Say the products you want to add to the bill.")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Tap to speak" }));
 
     expect(screen.getByRole("status").textContent).toContain("Listening… Speak your items.");
     expect(FakeRecognition.sessions).toHaveLength(1);
@@ -164,10 +188,10 @@ describe("Counter: add by voice", () => {
     ]);
 
     act(() => session().hear("add two", false)); // still speaking
-    expect(screen.getByLabelText("Transcript").textContent).toBe("add two");
+    expect(transcript()).toBe("add two");
     act(() => session().hear("add two Maggi"));
     act(() => session().hear("three cold drink", false));
-    expect(screen.getByLabelText("Transcript").textContent).toBe("add two Maggi three cold drink");
+    expect(transcript()).toBe("add two Maggi three cold drink");
     expect(parseCalls).toHaveLength(0); // nothing is sent while listening
 
     let release!: () => void;
@@ -185,7 +209,7 @@ describe("Counter: add by voice", () => {
     const user = await openVoice();
     await speak(user);
 
-    expect(screen.getByLabelText("Transcript").textContent).toBe(SAID);
+    expect(transcript()).toBe(SAID);
     // Confident match: catalogue name and catalogue price, quantity as spoken.
     expect(within(row("2 Maggi")).getByText(maggi.name)).toBeTruthy();
     expect(row("2 Maggi").textContent).toContain("₹14.00");
@@ -267,6 +291,7 @@ describe("Counter: add by voice", () => {
     await user.click(addButton(1));
 
     await user.click(await screen.findByRole("button", { name: "Add by Voice" }));
+    await user.click(screen.getByRole("button", { name: "Tap to speak" }));
     await speak(user);
     // Speaking again discards the previous transcript and items.
     await user.click(screen.getByRole("button", { name: "Speak again" }));
@@ -298,11 +323,12 @@ describe("Counter: add by voice", () => {
 
   it("says so when the browser has no speech recognition, and never pretends to listen", async () => {
     delete speechWindow.webkitSpeechRecognition;
-    await openVoice();
+    await openVoice(undefined, { tap: false });
     expect(screen.getByRole("alert").textContent).toContain("Voice input is not supported in this browser");
     expect(screen.queryByText("Listening… Speak your items.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Speak again" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Tap to speak" })).toBeNull();
     expect(FakeRecognition.sessions).toHaveLength(0);
   });
 
@@ -372,5 +398,212 @@ describe("voice review plan", () => {
       missingQuantity: 1,
     });
     expect(voicePlan([])).toEqual({ items: [], skipped: 0, missingQuantity: 0 });
+  });
+});
+
+describe("Counter: voice mode controls", () => {
+  it("asks the recogniser for the chosen language, remembers it, and has no way to listen in the background", async () => {
+    const user = await openVoice(undefined, { tap: false });
+    const language = screen.getByLabelText("Language") as HTMLSelectElement;
+    expect([...language.options].map((o) => o.textContent)).toEqual([
+      "English",
+      "हिंदी",
+      "Hinglish",
+      "தமிழ்",
+      "বাংলা",
+      "తెలుగు",
+      "मराठी",
+      "മലയാളം",
+      "ಕನ್ನಡ",
+      "ગુજરાતી",
+    ]); // no auto-detect
+    expect(language.value).toBe("en");
+
+    await user.selectOptions(language, "hi");
+    await user.click(screen.getByRole("button", { name: "Tap to speak" }));
+    expect([session().lang, session().started]).toEqual(["hi-IN", true]);
+    expect(language.disabled).toBe(true); // not mid-sentence
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    expect(FakeRecognition.sessions).toHaveLength(1); // stopping does not start another
+
+    await user.selectOptions(language, "hinglish");
+    await user.click(screen.getByRole("button", { name: "Speak again" }));
+    expect(session().lang).toBe("hi-IN"); // Hindi mixed with English: the browser's Hindi recogniser
+    expect(localStorage.getItem("dukaanos.voice.language")).toBe("hinglish");
+
+    cleanup();
+    await openVoice(undefined, { tap: false });
+    expect((screen.getByLabelText("Language") as HTMLSelectElement).value).toBe("hinglish");
+    expect(FakeRecognition.sessions).toHaveLength(2);
+  });
+
+  it("lets the merchant correct what was heard and look again, without speaking again", async () => {
+    const user = await openVoice();
+    await speak(user, "add two Maggy");
+    expect(parseCalls).toEqual([{ transcript: "add two Maggy" }]);
+    expect(screen.queryByRole("button", { name: "Find items" })).toBeNull(); // nothing changed yet
+
+    const box = screen.getByLabelText("Transcript");
+    await user.clear(box);
+    await user.type(box, "add two Maggi");
+    await user.click(screen.getByRole("button", { name: "Find items" }));
+    await waitFor(() => expect(parseCalls).toHaveLength(2));
+    expect(parseCalls[1]).toEqual({ transcript: "add two Maggi" });
+    expect(FakeRecognition.sessions).toHaveLength(1);
+    expect(backend.cartCalls()).toHaveLength(0);
+  });
+});
+
+describe("Counter: voice in Tamil, Bengali, Telugu, Marathi, Malayalam, Kannada and Gujarati", () => {
+  it.each([
+    ["ta", "ta-IN"],
+    ["bn", "bn-IN"],
+    ["te", "te-IN"],
+    ["mr", "mr-IN"],
+    ["ml", "ml-IN"],
+    ["kn", "kn-IN"],
+    ["gu", "gu-IN"],
+  ])("asks the browser's recogniser for %s as %s, and for nothing else", async (id, locale) => {
+    const user = await openVoice(undefined, { tap: false });
+    await user.selectOptions(screen.getByLabelText("Language"), id);
+    expect(FakeRecognition.sessions).toHaveLength(0); // choosing a language does not open the microphone
+    await user.click(screen.getByRole("button", { name: "Tap to speak" }));
+    expect(FakeRecognition.sessions).toHaveLength(1);
+    expect([session().lang, session().started]).toEqual([locale, true]);
+    expect(localStorage.getItem("dukaanos.voice.language")).toBe(id);
+  });
+
+  it("sends what was heard as it was heard, whatever the script", async () => {
+    const user = await openVoice(undefined, { tap: false });
+    await user.selectOptions(screen.getByLabelText("Language"), "ta");
+    await user.click(screen.getByRole("button", { name: "Tap to speak" }));
+    await speak(user, "இரண்டு மேகி சேர்க்கவும்");
+    expect(parseCalls).toEqual([{ transcript: "இரண்டு மேகி சேர்க்கவும்" }]); // no language is sent: the backend reads the words
+    expect(transcript()).toBe("இரண்டு மேகி சேர்க்கவும்");
+  });
+
+  it("says so when the browser cannot recognise the language, keeps the choice, and lets the items be typed", async () => {
+    const user = await openVoice(undefined, { tap: false });
+    const language = screen.getByLabelText("Language") as HTMLSelectElement;
+    await user.selectOptions(language, "te");
+    await user.click(screen.getByRole("button", { name: "Tap to speak" }));
+    act(() => session().fail("language-not-supported"));
+
+    expect(screen.getByRole("alert").textContent).toContain("cannot recognise speech in the chosen language");
+    expect(language.value).toBe("te"); // not switched to another language behind the merchant's back
+    expect(FakeRecognition.sessions).toHaveLength(1); // and not retried in one
+    expect(parseCalls).toHaveLength(0);
+
+    // Retry is one tap away; so is typing.
+    expect(screen.getByRole("button", { name: "Speak again" })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Type the items instead" }));
+    await user.type(screen.getByLabelText("Transcript"), "రెండు మ్యాగీ");
+    await user.click(screen.getByRole("button", { name: "Find items" }));
+    await waitFor(() => expect(parseCalls).toEqual([{ transcript: "రెండు మ్యాగీ" }]));
+    expect(await screen.findByText("Detected items")).toBeTruthy();
+    expect(backend.cartCalls()).toHaveLength(0); // typed or spoken, nothing reaches the bill before review
+  });
+});
+
+describe("Counter: spoken commands about the open bill", () => {
+  const command = (intent: Schemas["VoiceResult"]["intent"], lines: Schemas["VoiceLine"][] = []) => {
+    parseVoice = async () => json({ transcript: "said", intent, lines });
+  };
+  const lineCalls = () => backend.state.calls.filter((c) => /\/items\//.test(c.path));
+
+  /** A bill with 2 Maggi and 3 Pepsi on it (added by voice), and Voice mode open again. */
+  async function billThenVoice() {
+    const user = await openVoice();
+    await speak(user);
+    await user.click(within(row("3 cold drink")).getByRole("button", { name: /Pepsi 750ml/ }));
+    await user.click(screen.getByRole("button", { name: "Remove Parle G" }));
+    await user.click(addButton(2));
+    await user.click(await screen.findByRole("button", { name: "Add by Voice" }));
+    await user.click(screen.getByRole("button", { name: "Tap to speak" }));
+    return user;
+  }
+  async function say(user: ReturnType<typeof userEvent.setup>, said: string) {
+    act(() => session().hear(said));
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+  }
+
+  it("reads the total from the bill itself and changes nothing", async () => {
+    const user = await billThenVoice();
+    command("total");
+    await say(user, "what is the total");
+    const total = await screen.findByRole("status", { name: "Bill total" });
+    expect(total.textContent).toBe("Bill total so far: ₹148.00 for 2 items."); // 2×14 + 3×40
+    expect(parseCalls.at(-1)).toEqual({ transcript: "what is the total", cart_id: "cart-1" }); // the open bill is named
+    expect(lineCalls()).toHaveLength(0);
+    expect(screen.queryByText("Detected items")).toBeNull();
+  });
+
+  it("removes a line only after the merchant confirms, through the bill's own operation", async () => {
+    const user = await billThenVoice();
+    command("remove", [line("v0", "Maggi", null, "matched", { product: maggi })]);
+    await say(user, "remove Maggi from the bill");
+
+    const remove = await screen.findByRole("button", { name: `Remove ${maggi.name}` });
+    expect(lineCalls()).toHaveLength(0); // understanding the command is not doing it
+    expect(within(billPanel()).getByText(maggi.name)).toBeTruthy();
+    await user.click(remove);
+
+    expect((await screen.findByText(`Removed ${maggi.name} from the bill.`)).textContent).toBeTruthy();
+    expect(lineCalls().map((c) => [c.method, c.path])).toEqual([["DELETE", `/api/v1/carts/cart-1/items/line-${maggi.id}`]]);
+    expect(within(billPanel()).queryByText(maggi.name)).toBeNull();
+    expect(within(billPanel()).getByText(pepsi.name)).toBeTruthy(); // nothing else was touched
+  });
+
+  it("changes a quantity only after the merchant confirms, and never without a number", async () => {
+    const user = await billThenVoice();
+    command("set_quantity", [line("v0", "Maggi x 4", "4.000", "matched", { product: maggi, description: "Maggi" })]);
+    await say(user, "change Maggi quantity to four");
+    await user.click(await screen.findByRole("button", { name: `Set ${maggi.name} to 4` }));
+    expect((await screen.findByText(`${maggi.name} is now 4.`)).textContent).toBeTruthy();
+    expect(lineCalls().map((c) => [c.method, c.path, c.body])).toEqual([
+      ["PATCH", `/api/v1/carts/cart-1/items/line-${maggi.id}`, { quantity: "4" }],
+    ]);
+    expect(screen.getByRole("button", { name: /Collect/ }).textContent).toContain("₹176.00"); // 4×14 + 3×40
+
+    command("set_quantity", [line("v0", "Pepsi", null, "matched", { product: pepsi, description: "Pepsi" })]);
+    await user.click(screen.getByRole("button", { name: "Speak again" }));
+    await say(user, "change Pepsi quantity");
+    expect((await screen.findByText(/No new quantity was heard for "Pepsi"/)).textContent).toBeTruthy();
+    expect(lineCalls()).toHaveLength(1);
+  });
+
+  it("offers a choice when several lines could be meant, and says so when the item is not on the bill", async () => {
+    const user = await billThenVoice();
+    command("remove", [line("v0", "cold drink", null, "ambiguous", { candidates: [coke, pepsi, maggi] })]);
+    await say(user, "remove the cold drink");
+    // Only lines that are on the bill are offered: Coke is in the catalogue but not on this bill.
+    expect(await screen.findByRole("button", { name: `Remove ${pepsi.name}` })).toBeTruthy();
+    expect(screen.getByRole("button", { name: `Remove ${maggi.name}` })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: `Remove ${coke.name}` })).toBeNull();
+    expect(screen.getByText('Which "cold drink" on the bill?')).toBeTruthy();
+
+    command("remove", [line("v0", "basmati rice", null, "unmatched", { description: "basmati rice" })]);
+    await user.click(screen.getByRole("button", { name: "Speak again" }));
+    await say(user, "remove basmati rice");
+    expect((await screen.findByText('"basmati rice" is not on the bill.')).textContent).toBeTruthy();
+    expect(lineCalls()).toHaveLength(0);
+  });
+
+  it("clears the bill only on an explicit confirmation", async () => {
+    const user = await billThenVoice();
+    command("clear");
+    await say(user, "clear the bill");
+    expect((await screen.findByText("Remove all 2 items from the bill?")).textContent).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Keep bill" }));
+    expect(screen.getByText("The bill was kept as it is.")).toBeTruthy();
+    expect(lineCalls()).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "Speak again" }));
+    await say(user, "clear the bill");
+    await user.click(await screen.findByRole("button", { name: "Clear bill" }));
+    expect((await screen.findByText("The bill was cleared.")).textContent).toBeTruthy();
+    expect(lineCalls().map((c) => c.method)).toEqual(["DELETE", "DELETE"]);
+    expect(within(billPanel()).queryByText(maggi.name)).toBeNull();
+    expect(within(billPanel()).queryByText(pepsi.name)).toBeNull();
   });
 });

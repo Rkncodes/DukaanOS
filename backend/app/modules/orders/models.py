@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import QUANTITY, Base, CreatedAt, MerchantScoped, Timestamps, UUIDPk
 from app.core.enums import Channel, InputSource, OrderStatus, PaymentStatus, enum_check
+from app.core.tax import TaxSummary, summarize
 
 
 class Order(UUIDPk, MerchantScoped, Timestamps, Base):
@@ -21,6 +22,9 @@ class Order(UUIDPk, MerchantScoped, Timestamps, Base):
 
     customer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("customers.id"), index=True)
     cart_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("carts.id", ondelete="SET NULL"), unique=True)
+    # Contact a Shop customer gave when ordering without an account (not a khata customer).
+    customer_name: Mapped[str | None] = mapped_column(String(120))
+    customer_phone: Mapped[str | None] = mapped_column(String(20))
     channel: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(20), default=OrderStatus.PENDING)
     subtotal: Mapped[Decimal]
@@ -31,6 +35,10 @@ class Order(UUIDPk, MerchantScoped, Timestamps, Base):
     items: Mapped[list["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan", order_by="OrderItem.created_at"
     )
+
+    @property
+    def tax_summary(self) -> TaxSummary:
+        return summarize([(item.line_total, item.tax_rate) for item in self.items])
 
 
 class OrderItem(UUIDPk, CreatedAt, Base):
@@ -46,6 +54,7 @@ class OrderItem(UUIDPk, CreatedAt, Base):
     product_name: Mapped[str] = mapped_column(String(160))  # snapshot for historical bills
     quantity: Mapped[Decimal] = mapped_column(QUANTITY)
     unit_price: Mapped[Decimal]
+    tax_rate: Mapped[Decimal] = mapped_column(default=Decimal(0))  # snapshot, like product_name
     source: Mapped[str] = mapped_column(String(20), default=InputSource.MANUAL)
 
     order: Mapped[Order] = relationship(back_populates="items")

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import QUANTITY, Base, CreatedAt, MerchantScoped, Timestamps, UUIDPk
 from app.core.enums import CartStatus, Channel, InputSource, enum_check
+from app.core.tax import TaxSummary, summarize
 from app.modules.catalog.models import Product
 
 
@@ -24,6 +25,10 @@ class Cart(UUIDPk, MerchantScoped, Timestamps, Base):
     @property
     def subtotal(self) -> Decimal:
         return sum((item.line_total for item in self.items), Decimal("0.00"))
+
+    @property
+    def tax_summary(self) -> TaxSummary:
+        return summarize([(item.line_total, item.tax_rate) for item in self.items])
 
 
 class CartItem(UUIDPk, CreatedAt, Base):
@@ -47,6 +52,10 @@ class CartItem(UUIDPk, CreatedAt, Base):
     @property
     def product_name(self) -> str:
         return self.product.name
+
+    @property
+    def tax_rate(self) -> Decimal:
+        return self.product.tax_rate
 
     @property
     def line_total(self) -> Decimal:

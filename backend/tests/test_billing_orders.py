@@ -40,6 +40,44 @@ def test_cart_add_update_remove(client_a):
     assert client_a.get(f"/api/v1/carts/{cart['id']}").json()["subtotal"] == "42.00"
 
 
+def test_barcode_billing_is_an_exact_lookup_into_the_same_cart_and_bill(client_a, client_b):
+    maggi = create_product(client_a, name="Maggi", price="14.00", barcode="8901058000017", stock_quantity="5")
+    retired = create_product(client_a, name="Old Biscuit", price="10.00", barcode="8900000000999")
+    client_a.delete(f"/api/v1/products/{retired['id']}")  # taken off sale
+    create_product(client_b, name="B's Chips", price="20.00", barcode="8902222222222")
+    rahul = create_customer(client_a, name="Rahul")
+    cart = create_cart(client_a, customer_id=rahul["id"])
+    url = f"/api/v1/carts/{cart['id']}/items"
+
+    # A scan resolves the exact product at the catalogue's price; scanning again adds one more to the same line.
+    first = client_a.post(url, json={"barcode": "8901058000017", "source": "barcode"})
+    assert first.status_code == 200
+    line = first.json()["items"][0]
+    assert (line["product_id"], line["product_name"], line["unit_price"], line["quantity"], line["source"]) == (
+        maggi["id"], "Maggi", "14.00", "1.000", "barcode",
+    )  # fmt: skip
+    again = client_a.post(url, json={"barcode": "8901058000017", "source": "barcode"}).json()
+    assert [(i["product_name"], i["quantity"]) for i in again["items"]] == [("Maggi", "2.000")]
+
+    # Nothing is guessed: a near miss, an off-sale product's code and another merchant's code are all unknown.
+    for unknown in ("890105800001", "89010580000170", "0000000000000", "8900000000999", "8902222222222"):
+        res = client_a.post(url, json={"barcode": unknown, "source": "barcode"})
+        assert res.status_code == 404, unknown
+        assert res.json()["error"] == {"code": "not_found", "message": f"Barcode not found: {unknown}", "details": None}
+    assert client_a.get(f"/api/v1/carts/{cart['id']}").json()["subtotal"] == "28.00"  # the bill did not change
+
+    # The scanned line is an ordinary line: its quantity changes, stock is respected, and it checks out to khata.
+    cart = client_a.patch(f"{url}/{line['id']}", json={"quantity": "6"}).json()
+    short = client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "khata"})
+    assert short.status_code == 409 and short.json()["error"]["code"] == "insufficient_stock"
+    client_a.patch(f"{url}/{line['id']}", json={"quantity": "5"})
+    order = client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "khata"}).json()
+    assert order["total"] == "70.00" and order["payment_status"] == "credit"
+    assert [(i["product_name"], i["source"]) for i in order["items"]] == [("Maggi", "barcode")]
+    assert client_a.get(f"/api/v1/products/{maggi['id']}").json()["stock_quantity"] == "0.000"
+    assert client_a.get(f"/api/v1/customers/{rahul['id']}/khata").json()["balance"] == "70.00"
+
+
 def test_add_item_validation(client_a):
     product = create_product(client_a)
     cart = create_cart(client_a)
@@ -127,6 +165,75 @@ def test_insufficient_stock_rolls_back_whole_checkout(client_a):
     assert client_a.get(f"/api/v1/products/{plenty['id']}").json()["stock_quantity"] == "100.000"
     assert client_a.get(f"/api/v1/carts/{cart['id']}").json()["status"] == "open"
     assert client_a.get("/api/v1/orders").json() == []
+
+
+def _sale(client, cart_id: str, product_id: str, qty: str = "1", method: str = "cash") -> dict:
+    client.post(f"/api/v1/carts/{cart_id}/items", json={"product_id": product_id, "quantity": qty})
+    res = client.post(f"/api/v1/carts/{cart_id}/checkout", json={"method": method})
+    assert res.status_code == 201, res.text
+    return res.json()
+
+
+def test_cross_sell_ranks_by_co_purchase_frequency(client_a):
+    maggi = create_product(client_a, name="Maggi", price="14.00", stock_quantity="50", barcode="1")
+    coke = create_product(client_a, name="Coke", price="40.00", stock_quantity="50", barcode="2")
+    chips = create_product(client_a, name="Chips", price="20.00", stock_quantity="50", barcode="3")
+    unrelated = create_product(client_a, name="Unrelated", price="5.00", stock_quantity="50", barcode="4")
+
+    # Maggi+Coke bought together twice; Maggi+Chips once; Unrelated never with Maggi.
+    for _ in range(2):
+        cart = create_cart(client_a)
+        client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": maggi["id"]})
+        client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": coke["id"]})
+        client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "cash"})
+    cart = create_cart(client_a)
+    client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": maggi["id"]})
+    client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": chips["id"]})
+    client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "cash"})
+    _sale(client_a, create_cart(client_a)["id"], unrelated["id"])
+
+    live_cart = create_cart(client_a)
+    client_a.post(f"/api/v1/carts/{live_cart['id']}/items", json={"product_id": maggi["id"]})
+    suggestions = client_a.get(f"/api/v1/carts/{live_cart['id']}/cross-sell").json()
+    assert [(s["name"], s["times_bought_together"]) for s in suggestions] == [("Coke", 2), ("Chips", 1)]
+    assert "Unrelated" not in [s["name"] for s in suggestions]
+
+
+def test_cross_sell_excludes_items_already_in_cart_and_inactive_products(client_a):
+    maggi = create_product(client_a, name="Maggi", price="14.00", stock_quantity="50", barcode="11")
+    coke = create_product(client_a, name="Coke", price="40.00", stock_quantity="50", barcode="22")
+    retired = create_product(client_a, name="Retired", price="10.00", stock_quantity="50", barcode="33")
+    for product in (coke, retired):
+        cart = create_cart(client_a)
+        client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": maggi["id"]})
+        client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": product["id"]})
+        client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "cash"})
+    client_a.delete(f"/api/v1/products/{retired['id']}")
+
+    live_cart = create_cart(client_a)
+    client_a.post(f"/api/v1/carts/{live_cart['id']}/items", json={"product_id": maggi["id"]})
+    client_a.post(f"/api/v1/carts/{live_cart['id']}/items", json={"product_id": coke["id"]})
+    suggestions = client_a.get(f"/api/v1/carts/{live_cart['id']}/cross-sell").json()
+    assert suggestions == []  # Coke already in cart, Retired no longer on sale
+
+
+def test_cross_sell_is_empty_for_an_empty_cart(client_a):
+    cart = create_cart(client_a)
+    assert client_a.get(f"/api/v1/carts/{cart['id']}/cross-sell").json() == []
+
+
+def test_cross_sell_is_isolated_per_merchant(client_a, client_b):
+    maggi_a = create_product(client_a, name="Maggi", price="14.00", stock_quantity="50")
+    coke_a = create_product(client_a, name="Coke", price="40.00", stock_quantity="50")
+    cart = create_cart(client_a)
+    client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": maggi_a["id"]})
+    client_a.post(f"/api/v1/carts/{cart['id']}/items", json={"product_id": coke_a["id"]})
+    client_a.post(f"/api/v1/carts/{cart['id']}/checkout", json={"method": "cash"})
+
+    maggi_b = create_product(client_b, name="Maggi", price="14.00", stock_quantity="50")
+    live_cart_b = create_cart(client_b)
+    client_b.post(f"/api/v1/carts/{live_cart_b['id']}/items", json={"product_id": maggi_b["id"]})
+    assert client_b.get(f"/api/v1/carts/{live_cart_b['id']}/cross-sell").json() == []
 
 
 def _merchant_ctx(db, email: str) -> TenantContext:
