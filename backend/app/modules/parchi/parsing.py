@@ -87,6 +87,20 @@ def parse_line(text: str, *, raw_text: str | None = None) -> ParsedLine | None:
     return ParsedLine(raw, (*readings, whole))
 
 
+# Where text read without its spaces is taken apart. A capital only starts a word when lower-case
+# letters come before and after it ("TataSalt", "AmulMilk"), so "Parle-G" and "ML" stay whole.
+_WORD_START = re.compile(r"(?<=[a-z])(?=[A-Z][a-z])")
+_DIGIT_EDGE = re.compile(r"(?<=[^\W\d_])(?=\d)|(?<=\d)(?=[^\W\d_])")  # "2Amul" -> "2 Amul", "Onion1kg" -> "Onion 1kg"
+
+
+def unglue(text: str) -> str | None:
+    """The same text with run-together words taken apart ("2AmulMilk" -> "2 Amul Milk"), or None
+    when nothing in it is run together. A reader often drops the narrow gaps of handwriting. This
+    only puts spaces back: no letter or digit is added, removed or changed."""
+    apart = re.sub(r"\s+", " ", _DIGIT_EDGE.sub(" ", _WORD_START.sub(" ", text))).strip()
+    return apart if apart != re.sub(r"\s+", " ", text).strip() else None
+
+
 def strip_numbering(lines: list[str]) -> list[str]:
     """ "1. Maggi", "2. Coke", "3. Salt": a list counted 1, 2, 3 from its first line is numbered;
     those numbers are not quantities."""

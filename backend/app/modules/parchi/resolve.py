@@ -11,7 +11,7 @@ from decimal import Decimal
 from difflib import SequenceMatcher
 from typing import Hashable
 
-from app.modules.parchi.parsing import ParsedLine, Reading
+from app.modules.parchi.parsing import ParsedLine, Reading, parse_line, unglue
 from app.modules.vision.matching import words  # shared name normalization ("750 ml" -> "750ml")
 from app.modules.vision.schemas import MatchState
 
@@ -100,20 +100,57 @@ def match(description: str, entries: list[Entry]) -> tuple[MatchState, tuple[Can
     return MatchState.AMBIGUOUS, tuple(best[:MAX_CANDIDATES]), written
 
 
-def _number_may_be_part_of_name(reading: Reading, raw_words: list[str], candidates, by_key: dict) -> bool:
+def _number_may_be_part_of_name(
+    reading: Reading, raw_words: list[str], candidates, by_key: dict, *, run_together: bool = False
+) -> bool:
     """ "5 Star", "Maggi 2": the bare number and the word next to it stand together, in that
-    order, in a candidate product's name ("Cadbury 5 Star", "Maggi 2-Minute Noodles")."""
+    order, in a candidate product's name ("Cadbury 5 Star", "Maggi 2-Minute Noodles").
+
+    `run_together`: the line was read without its spaces, so where the number ends is itself a
+    guess ("45Star" may be 4 x "5 Star"). Then any digits on the side of the number that touches
+    the word count: "5" + "star" is in a name, so "45" is not taken as the quantity."""
     if reading.position is None or len(raw_words) < 2:
         return False
-    pair = tuple(raw_words[:2]) if reading.position == "leading" else tuple(raw_words[-2:])
+    leading = reading.position == "leading"
+    number, word = (raw_words[0], raw_words[1]) if leading else (raw_words[-1], raw_words[-2])
+    numbers = {number}
+    if run_together and number.isdigit():
+        numbers |= {number[i:] for i in range(len(number))} if leading else {number[:i] for i in range(1, len(number) + 1)}
+    pairs = {(n, word) if leading else (word, n) for n in numbers}
     for candidate in candidates:
         name_words = words(by_key[candidate.key].name)
-        if any(tuple(name_words[i : i + 2]) == pair for i in range(len(name_words) - 1)):
+        if any(tuple(name_words[i : i + 2]) in pairs for i in range(len(name_words) - 1)):
             return True
     return False
 
 
-def resolve(line: ParsedLine, entries: list[Entry]) -> Resolution:
+def resolve(line: ParsedLine, entries: list[Entry], *, take_apart: bool = False) -> Resolution:
+    """The line as it was read.
+
+    `take_apart` is for text read from a photo, where a reader drops the narrow gaps of
+    handwriting (other callers of this function, such as voice, leave it off). Only when the
+    line is not a match and words in it were read run together ("TataSalt 1kg", "2AmulMilk")
+    is it also tried with those words taken apart, and that reading is used only if the
+    catalogue explains more of it, or as much of it without having to assume a misspelling
+    ("Cola2" is "Cola" and a 2, not a misspelt "Cola"). Taking words apart changes no letters:
+    what counts as a match, a choice or unknown is decided by the same rules."""
+    found = _resolve(line, entries)
+    if not take_apart or found.state == MatchState.MATCHED:
+        return found
+    apart = unglue(line.readings[-1].description)
+    parsed = parse_line(apart) if apart else None
+    if parsed is None:
+        return found
+    retried = _resolve(parsed, entries, run_together=True)
+    return retried if _explained(retried) > _explained(found) else found
+
+
+def _explained(found: Resolution) -> tuple[float, bool]:
+    """How well the catalogue explains a reading: share of its words found, then found as written."""
+    return (found.candidates[0].share, found.candidates[0].exact) if found.candidates else (0.0, False)
+
+
+def _resolve(line: ParsedLine, entries: list[Entry], *, run_together: bool = False) -> Resolution:
     by_key = {e.key: e for e in entries}
     whole = line.readings[-1]
     raw_words = words(whole.description)
@@ -123,7 +160,7 @@ def resolve(line: ParsedLine, entries: list[Entry]) -> Resolution:
         if reading.marked:
             chosen = reading
             break
-        if not _number_may_be_part_of_name(reading, raw_words, as_written, by_key):
+        if not _number_may_be_part_of_name(reading, raw_words, as_written, by_key, run_together=run_together):
             chosen = reading
             break
     state, candidates, written = match(chosen.description, entries)

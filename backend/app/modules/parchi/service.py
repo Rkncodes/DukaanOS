@@ -66,7 +66,7 @@ def read_parchi(db: Session, ctx: TenantContext, reader: ParchiReader, image: by
 
     lines = []
     for index, parsed in enumerate(parse_lines([t.text for t in read])[:MAX_LINES]):
-        found = resolve(parsed, entries)
+        found = resolve(parsed, entries, take_apart=True)  # a reader drops the narrow gaps of handwriting
         chosen = [ProductRead.model_validate(by_id[c.key]) for c in found.candidates]
         matched = found.state == MatchState.MATCHED
         lines.append(
