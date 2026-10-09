@@ -23,6 +23,8 @@ from app.integrations.ocr import (
     Word,
     build_parchi_reader,
     WORD_GAP,
+    agreed_reading,
+    doubtful,
     page_tilt,
     parse_ocr_result,
     respace,
@@ -309,9 +311,9 @@ def tilted_parchi(degrees: float, *, quantity_x: float, name_x: float = 100, spa
 def test_a_quantity_written_apart_stays_on_its_own_line_when_the_photo_is_tilted(degrees):
     # 800px to the right at 4 degrees is 56px lower on the photo: almost a whole line.
     right = rows(parse_ocr_result(tilted_parchi(degrees, quantity_x=900)))
-    assert [r.text for r in right] == ["Noodles 2", "Cola 750ml 3", "Table Salt 4", "Paste 1"]
+    assert [r.text for r in right] == ["Noodles\t2", "Cola 750ml\t3", "Table Salt\t4", "Paste\t1"]
     left = rows(parse_ocr_result(tilted_parchi(degrees, quantity_x=20, name_x=400)))
-    assert [r.text for r in left] == ["2 Noodles", "3 Cola 750ml", "4 Table Salt", "1 Paste"]
+    assert [r.text for r in left] == ["2\tNoodles", "3\tCola 750ml", "4\tTable Salt", "1\tPaste"]
     assert page_tilt(parse_ocr_result(tilted_parchi(degrees, quantity_x=900))) == pytest.approx(math.radians(degrees))
 
 
@@ -319,7 +321,7 @@ def test_neighbouring_lines_never_merge_and_a_stray_number_is_never_given_to_an_
     # Lines written close together (boxes 66px apart, 60px tall), level and tilted.
     for degrees in (0.0, 4.0, -4.0):
         close = rows(parse_ocr_result(tilted_parchi(degrees, quantity_x=900, spacing=66)))
-        assert [r.text for r in close] == ["Noodles 2", "Cola 750ml 3", "Table Salt 4", "Paste 1"], degrees
+        assert [r.text for r in close] == ["Noodles\t2", "Cola 750ml\t3", "Table Salt\t4", "Paste\t1"], degrees
     # A number halfway between two lines belongs to neither: it stays alone (and is then dropped).
     between = [piece("Noodles", 100, 100, 300, 60), piece("7", 900, 164, 44, 54), piece("Cola", 100, 220, 200, 60)]
     assert [r.text for r in rows(parse_ocr_result(between))] == ["Noodles", "7", "Cola"]
@@ -408,7 +410,101 @@ def test_lines_stay_separate_and_whole_when_the_reader_reports_its_characters():
         spelled("TableSalt", step(9, 200), top=232),
         spelled("1kg", step(3, 520), top=232),
     ]
-    assert [r.text for r in rows(parse_ocr_result(result))] == ["2 Noodles", "4 5Star", "TableSalt 1kg"]
+    assert [r.text for r in rows(parse_ocr_result(result))] == ["2\tNoodles", "4 5Star", "TableSalt 1kg"]
+
+
+# ---- columns: quantities and prices ----
+
+
+def columns(*lines, name_x: float = 100, spacing: float = 120):
+    """A parchi written in columns: each line is (name, then the numbers of its columns, left to
+    right at x = 700, 1000); None leaves a column empty on that line."""
+    pieces = []
+    for i, (name, *numbers) in enumerate(lines):
+        top = 100 + i * spacing
+        if name:
+            pieces.append(piece(name, name_x, top, 300, 60))
+        for x, number in zip((700, 1000), numbers, strict=False):
+            if number is not None:
+                pieces.append(piece(str(number), x, top + 4, 30 * len(str(number)), 54))
+    return [r.text for r in rows(parse_ocr_result(pieces))]
+
+
+def test_a_price_column_is_not_part_of_the_items_and_a_quantity_column_is():
+    # Item, quantity, price, and a total under the prices.
+    assert columns(("Noodles", 2, 28), ("Cola", 1, 40), ("Table Salt", 3, 84), ("Paste", 1, 110), ("", None, 262)) == [
+        "Noodles\t2",
+        "Cola\t1",
+        "Table Salt\t3",
+        "Paste\t1",
+    ]
+    # Cheap items: the prices are no bigger than quantities could be, but they are the second column of numbers.
+    assert columns(("Noodles", 2, 7), ("Cola", 1, 5), ("Paste", 3, 9)) == ["Noodles\t2", "Cola\t1", "Paste\t3"]
+    # The quantity column was not read at all (faint, creased): the prices still are not quantities.
+    assert columns(("Noodles", None, 28), ("Cola", None, 40), ("Table Salt", None, 30), ("", None, 98)) == ["Noodles", "Cola", "Table Salt"]
+    assert columns(("Noodles", None, "₹7"), ("Cola", None, "₹5"), ("Paste", None, "9/-")) == ["Noodles", "Cola", "Paste"]
+    # A column of quantities alone stays: household quantities are small, a dozen here and there.
+    assert columns(("Noodles", 2), ("Cola", 12), ("Table Salt", 1), ("Paste", 3)) == ["Noodles\t2", "Cola\t12", "Table Salt\t1", "Paste\t3"]
+    # One number in a column proves nothing about the column: it is left as it was read.
+    assert columns(("Noodles", 28)) == ["Noodles\t28"]
+    # Numbers written next to the name are never a column, whatever their size.
+    inline = [piece("Noodles", 100, 100 + i * 120, 300, 60) for i in range(3)] + [piece("24", 430, 104 + i * 120, 60, 54) for i in range(3)]
+    assert [r.text for r in rows(parse_ocr_result(inline))] == ["Noodles 24"] * 3
+
+
+def test_a_number_in_a_column_of_its_own_is_the_quantity_and_a_price_never_is():
+    def read(*lines: str):
+        return [(None if (f := resolve(p, ENTRIES, take_apart=True)).quantity is None else str(f.quantity), f.description, f.state) for p in parse_lines(list(lines))]
+
+    noodles = MatchState.AMBIGUOUS
+    assert read("Noodles\t2", "2\tNoodles") == [("2", "Noodles", noodles), ("2", "Noodles", noodles)]
+    assert read("Table Salt 1kg\t3") == [("3", "Table Salt 1kg", MatchState.MATCHED)]
+    assert read("4\t5 Star", "5 Star\t4") == [("4", "5 Star", MatchState.MATCHED)] * 2  # the 5 is the name, the 4 stood apart
+    assert read("2\tCola\t5") == [(None, "Cola", MatchState.MATCHED)]  # a number on either side: which one is not decided here
+    assert read("Cola\t750ml") == [(None, "Cola 750ml", MatchState.MATCHED)]  # a size in its own column is still a size
+    assert read("Cola\t5000") == [(None, "Cola 5000", MatchState.AMBIGUOUS)]  # not a believable quantity: nothing is prefilled
+    # Prices, however they are written, are not quantities and not part of the name.
+    for line in ("Cola Rs 20", "Cola Rs. 20", "Cola ₹20", "Cola 20/-", "Cola - Rs 20", "Cola 20 rs", "Cola MRP 20", "Cola\tRs 20"):
+        assert read(line) == [(None, "Cola", MatchState.MATCHED)], line
+    assert read("2 Cola Rs 40", "Cola 2 - Rs 40", "Cola 3 Rs 60", "Cola x2 40/-", "Cola\t2\t₹40") == [("2", "Cola", MatchState.MATCHED)] * 2 + [
+        ("3", "Cola", MatchState.MATCHED),
+        ("2", "Cola", MatchState.MATCHED),
+        ("2", "Cola", MatchState.MATCHED),
+    ]
+    assert parse_lines(["Rs 40", "₹358", "Total 358/-"])[0].readings[-1].description == "Total"  # only words are left of a total
+
+
+def test_two_numbers_that_could_each_be_the_quantity_leave_it_to_the_merchant():
+    as_written = lambda text: readings_of(parse_lines([text])[0])  # noqa: E731
+    assert as_written("2 Eggs (6)") == [(None, "2 Eggs (6)")] and as_written("2 Eggs(6)") == [(None, "2 Eggs(6)")]
+    assert as_written("Eggs (6)") == [("6", "Eggs"), (None, "Eggs (6)")]  # one number: unchanged
+    assert as_written("2 x Eggs (6)")[0] == ("2", "Eggs (6)")  # "x" says which one is the count
+    assert as_written("2\tEggs (6)")[0] == ("2", "Eggs (6)")  # so does a column
+    assert readings("2 Eggs (6)")[0] == ("6", "2 Eggs")  # a spoken line is read as before (voice shares parse_line)
+
+
+def test_an_apostrophe_inside_a_word_does_not_hide_the_product():
+    chips = [Entry("Lays Classic Salted 52g", "Lays Classic Salted 52g"), Entry("Cola", "Cola")]
+    found = resolve(parse_lines(["2 Lay's"])[0], chips, take_apart=True)
+    assert (str(found.quantity), found.state, [c.key for c in found.candidates]) == ("2", MatchState.MATCHED, ["Lays Classic Salted 52g"])
+    assert unglue("Lay's") == "Lays" and unglue("Magg'") is None and unglue("'Cola'") is None
+
+
+# ---- a second look at pieces the reader was unsure of ----
+
+
+def test_a_piece_is_only_read_differently_when_the_reader_itself_agrees_on_it():
+    assert doubtful("Ikg", [0.41, 0.98, 0.99]) and doubtful("一", [0.95]) and not doubtful("Doritos", [0.95, 0.99, 0.77])
+    same = [("1kg", 0.83), ("1kg", 0.85), ("1kg", 0.90), ("1 kg", 0.96), ("1kg", 0.91)]
+    assert agreed_reading("Ikg", same) == ("1 kg", 0.96)  # all five views: the best-scored one is used
+    assert agreed_reading("一", [("1", 0.84), ("1", 0.76), ("1", 0.58), ("1", 0.94), ("l", 0.54)]) == ("1", 0.94)
+    # Views that disagree settle nothing (what was read for "750ml"): the first reading stays.
+    assert agreed_reading("CokeFsoml", [("Coke75oml", 0.77), ("Coket5oml", 0.78), ("Coke t50ml", 0.82), ("Coke 7soml", 0.8), ("Coke t50ml", 0.83)]) is None
+    assert agreed_reading("Ikg", same[:3] + [("lkg", 0.9), ("Ikg", 0.9)]) is None  # three of five is not agreement
+    # A second look never adds or drops characters (a neighbour caught in the cut-out), and never changes script.
+    assert agreed_reading("2", [("2P", 0.9)] * 5) is None and agreed_reading("Tenabo", [("Tomato1", 0.9)] * 5) is None
+    assert agreed_reading("门", [("儿", 0.6)] * 5) is None
+    assert agreed_reading("Doritos", [("Doritos", 0.99)] * 5) is None and agreed_reading("Ikg", []) is None
 
 
 def test_reader_is_selected_by_configuration_and_never_faked(monkeypatch):
@@ -730,6 +826,38 @@ def test_smoke_real_ocr_a_quantity_written_apart_from_a_name_that_starts_with_a_
         ("4.000", catalog["Caramel 5 Star 40g"]["id"]),
         ("2.000", catalog["Cola"]["id"]),
         ("3.000", catalog["Glucose-G Biscuits 250g"]["id"]),
+    ], res.json()["text"]
+
+
+@pytest.mark.skipif(not SMOKE, reason="set PARCHI_REAL_SMOKE=1 (and `uv sync --extra parchi`) to run the real OCR engine")
+@pytest.mark.parametrize("degrees", [0, 3])
+def test_smoke_real_ocr_three_columns_bill_the_quantity_never_the_price(client_a, degrees):
+    pytest.importorskip("rapidocr_onnxruntime")
+    from PIL import ImageDraw, ImageFont
+
+    catalog = seed(client_a)
+    paper = (250, 248, 240)
+    image = Image.new("RGB", (1100, 640), paper)
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=56)
+    listed = (("Cola", 2, 40), ("Glucose-G", 3, 75), ("Table Salt", 1, 28), ("Noodles 70g", 4, 56))
+    for i, (text, quantity, price) in enumerate(listed):
+        draw.text((60, 50 + 120 * i), text, fill=(25, 30, 90), font=font)
+        draw.text((620, 50 + 120 * i), str(quantity), fill=(25, 30, 90), font=font)
+        draw.text((860, 50 + 120 * i), str(price), fill=(25, 30, 90), font=font)
+    draw.text((860, 50 + 120 * len(listed)), str(sum(price for _, _, price in listed)), fill=(25, 30, 90), font=font)  # the total
+    data = BytesIO()
+    image.rotate(degrees, resample=Image.BICUBIC, expand=True, fillcolor=paper).save(data, "JPEG", quality=85)
+
+    use_reader(RapidOcrParchiReader())
+    res = upload(client_a, data.getvalue(), "image/jpeg")
+    assert res.status_code == 200, res.text
+    found = [(line["quantity"], line["product"] and line["product"]["id"]) for line in res.json()["lines"]]
+    assert found == [
+        ("2.000", catalog["Cola"]["id"]),
+        ("3.000", catalog["Glucose-G Biscuits 250g"]["id"]),
+        ("1.000", catalog["Table Salt 1kg"]["id"]),
+        ("4.000", catalog["Instant Noodles 70g"]["id"]),
     ], res.json()["text"]
 
 

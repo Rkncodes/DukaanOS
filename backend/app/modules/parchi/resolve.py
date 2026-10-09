@@ -138,7 +138,7 @@ def resolve(line: ParsedLine, entries: list[Entry], *, take_apart: bool = False)
     if not take_apart or found.state == MatchState.MATCHED:
         return found
     apart = unglue(line.readings[-1].description)
-    parsed = parse_line(apart) if apart else None
+    parsed = parse_line(apart, written=True) if apart else None
     if parsed is None:
         return found
     retried = _resolve(parsed, entries, run_together=True)
