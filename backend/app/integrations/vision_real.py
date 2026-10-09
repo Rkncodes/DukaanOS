@@ -168,6 +168,13 @@ def crop(image: Image.Image, box: BoundingBox, pad: float = 0.05) -> Image.Image
     return image.crop(crop_rect(image.size, box, pad))
 
 
+# Inference runs on a few long-lived threads, never on a thread made for one request. torch and
+# ONNX Runtime keep a set of worker threads (and their memory) for every thread that calls them
+# and never give it back, so a new thread per frame grows the process by ~11 threads and ~75 MB
+# per frame until the machine starts swapping.
+_READERS = ThreadPoolExecutor(max_workers=2, thread_name_prefix="vision-read")
+
+
 @dataclass(frozen=True)
 class Observation:
     """Everything the pipeline saw in one frame, stage by stage (kept for diagnosis)."""
@@ -256,10 +263,8 @@ class RealLiveRecognizer:
         """Locate products and read text concurrently (both release the GIL during inference)."""
         if self.reader is None:
             return self.locator.locate(frame), []
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            located = pool.submit(self.locator.locate, frame)
-            read = pool.submit(self.reader.read, frame)
-            return located.result(), read.result()
+        read = _READERS.submit(self.reader.read, frame)
+        return self.locator.locate(frame), read.result()
 
     def observe(self, image: bytes) -> Observation:
         with Image.open(BytesIO(image)) as img:
@@ -315,12 +320,15 @@ class RealLiveRecognizer:
 
 
 class _Models:
-    """Loads torch models once, on first use, and serializes their inference."""
+    """Loads torch models once, on first use, and runs all their inference, one call at a time,
+    on one thread of its own (see _READERS: whichever request thread asks, torch only ever sees
+    this one)."""
 
     def __init__(self, config: RealVisionConfig):
         self.config = config
         self._lock = threading.Lock()
         self._loaded: dict[str, Any] | None = None
+        self._worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="vision-models")
 
     def get(self) -> dict[str, Any]:
         with self._lock:
@@ -349,6 +357,9 @@ class _Models:
             raise IntegrationNotConfigured(f"Could not load vision models: {exc}") from exc
 
     def run(self, fn):
+        return self._worker.submit(self._infer, fn).result()
+
+    def _infer(self, fn):
         models = self.get()
         with self._lock, models["torch"].inference_mode():
             return fn(models)
