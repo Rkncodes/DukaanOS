@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 from typing import Annotated
 
@@ -12,6 +14,7 @@ from app.modules.vision.image import MAX_IMAGE_BYTES, validate_image
 from app.modules.vision.schemas import ReferenceImageRead, VisionResult
 
 router = APIRouter(prefix="/vision", tags=["vision"])
+log = logging.getLogger("uvicorn.error")  # the server's own console logger: shown without extra logging setup
 
 
 def get_recognizer() -> ProductRecognizer:
@@ -26,13 +29,23 @@ Recognizer = Annotated[ProductRecognizer, Depends(get_recognizer)]
 LiveRecognizer = Annotated[FrameRecognizer, Depends(get_frame_recognizer)]
 
 
+def _timed(response: Response, started: float, what: str, result: VisionResult) -> VisionResult:
+    """How long the server spent on this image: in the console, and as a Server-Timing header the
+    browser shows next to the request (Network > Timing), to tell server time from everything else."""
+    took = (time.perf_counter() - started) * 1000
+    response.headers["Server-Timing"] = f"vision;dur={took:.0f}"
+    log.info("vision %s: %.0f ms on the server, %d detections", what, took, len(result.detections))
+    return result
+
+
 @router.post("/recognize")
-def recognize(image: UploadFile, db: DbSession, ctx: Tenant, recognizer: Recognizer) -> VisionResult:
+def recognize(image: UploadFile, db: DbSession, ctx: Tenant, recognizer: Recognizer, response: Response) -> VisionResult:
     """Detect products in a photo and match them to this merchant's catalog.
     Read-only: the image is not stored and nothing is added to a cart."""
+    started = time.perf_counter()
     data = image.file.read(MAX_IMAGE_BYTES + 1)
     validate_image(data, image.content_type)
-    return service.recognize(db, ctx, recognizer, data)
+    return _timed(response, started, "photo", service.recognize(db, ctx, recognizer, data))
 
 
 @router.post("/frames")
@@ -41,13 +54,16 @@ def recognize_frame(
     db: DbSession,
     ctx: Tenant,
     recognizer: LiveRecognizer,
+    response: Response,
     sequence: Annotated[int, Form(ge=0)] = 0,
 ) -> VisionResult:
     """One live camera frame -> detections matched to this merchant's catalog.
     Read-only, like /recognize: frames are not stored and no cart is touched."""
+    started = time.perf_counter()
     data = image.file.read(MAX_IMAGE_BYTES + 1)
     validate_image(data, image.content_type)
-    return service.recognize_frame(db, ctx, recognizer, data, sequence=sequence)
+    result = service.recognize_frame(db, ctx, recognizer, data, sequence=sequence)
+    return _timed(response, started, f"frame {sequence}", result)
 
 
 # ---- reference photos: the merchant's own pictures of a product's packaging ----

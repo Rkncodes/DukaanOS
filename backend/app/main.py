@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import API_PREFIX, api_router
 from app.core.config import settings
 from app.core.errors import register_error_handlers
+from app.core.process import run_at_full_speed
+
+run_at_full_speed()  # before any model work: see app.core.process
 
 
 def create_app() -> FastAPI:
