@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
+import { useTranslation } from "../../../i18n";
 import { ApiError, type Schemas } from "../../../lib/api/client";
 import { formatINR, formatQuantity } from "../../../lib/format";
 import { availableStock, findByBarcode } from "../bill";
@@ -30,6 +31,7 @@ type Outcome =
  * input. An unknown code adds nothing.
  */
 export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, scanEveryMs }: Props) {
+  const { t, problem } = useTranslation();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -61,8 +63,8 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
     const unknown: Outcome = {
       kind: "problem",
       code: scanned,
-      title: "Barcode not found",
-      detail: "No product in your catalogue has this barcode. Nothing was added. Search for the product instead, or add the barcode to it under Catalogue.",
+      title: t("barcode.notFound"),
+      detail: t("barcode.notFoundDetail"),
     };
     let known = products;
     let found = findByBarcode(scanned, known);
@@ -75,13 +77,13 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
       return {
         kind: "problem",
         code: scanned,
-        title: "This barcode is on more than one product",
-        detail: `${found.products.map((p) => p.name).join(", ")}. Nothing was added. Give each product its own barcode under Catalogue.`,
+        title: t("barcode.several"),
+        detail: t("barcode.severalDetail", { names: found.products.map((p) => p.name).join(", ") }),
       };
 
     const product = found.product;
     if ((availableStock(known, cartItems).get(product.id) ?? 0) < 1)
-      return { kind: "problem", code: scanned, title: `No more ${product.name} in stock`, detail: "Nothing was added." };
+      return { kind: "problem", code: scanned, title: t("picker.noMoreInStock", { name: product.name }), detail: t("barcode.nothingAdded") };
     try {
       await onAdd(scanned);
       return { kind: "added", product, code: scanned };
@@ -90,18 +92,18 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
       return {
         kind: "problem",
         code: scanned,
-        title: "Could not add this product",
-        detail: error instanceof Error ? error.message : "Nothing was added.",
+        title: t("barcode.couldNotAdd"),
+        detail: error instanceof Error ? problem(error) : t("barcode.nothingAdded"),
       };
     }
   }
 
   return (
-    <section aria-label="Scan barcode" className="flex flex-col rounded-xl border border-slate-200 bg-white p-4">
+    <section aria-label={t("counter.mode.barcode.name")} className="flex flex-col rounded-xl border border-slate-200 bg-white p-4">
       <div className="order-1 mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-slate-900">Scan barcode</h2>
+        <h2 className="text-lg font-semibold text-slate-900">{t("counter.mode.barcode.name")}</h2>
         <button type="button" onClick={onClose} className="text-sm text-slate-500 hover:text-slate-800">
-          Cancel
+          {t("common.cancel")}
         </button>
       </div>
 
@@ -111,13 +113,13 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
 
       <div className="order-4 my-4 flex items-center gap-3 text-xs font-medium uppercase tracking-wide text-slate-400">
         <span className="h-px flex-1 bg-slate-200" />
-        or enter the barcode
+        {t("barcode.or")}
         <span className="h-px flex-1 bg-slate-200" />
       </div>
 
       <form onSubmit={scan} className="order-5">
         <label htmlFor="counter-barcode" className="mb-1 block text-sm font-medium text-slate-600">
-          Barcode
+          {t("barcode.label")}
         </label>
         <div className="flex gap-2">
           <input
@@ -128,7 +130,7 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
             inputMode="numeric"
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="Scan, or type the code and press Enter"
+            placeholder={t("barcode.placeholder")}
             className="w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-lg tracking-wider focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200"
           />
           <button
@@ -136,7 +138,7 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
             disabled={busy || !code.trim()}
             className="whitespace-nowrap rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
           >
-            {busy ? "Adding…" : "Add to bill"}
+            {busy ? t("review.adding") : t("barcode.addToBill")}
           </button>
         </div>
       </form>
@@ -145,21 +147,21 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
       <div className="order-3 mt-3 min-h-20">
         {outcome === null && (
           <p className="rounded-lg bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-            Waiting for a scan. Each scan adds one of that product to the bill.
+            {t("barcode.waiting")}
           </p>
         )}
         {outcome?.kind === "added" && (
           <div role="status" className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
             <div className="min-w-0">
-              <div className="text-xs font-medium uppercase tracking-wide text-emerald-700">Added to bill</div>
+              <div className="text-xs font-medium uppercase tracking-wide text-emerald-700">{t("barcode.added")}</div>
               <div className="truncate text-lg font-semibold text-slate-900">{outcome.product.name}</div>
               <div className="text-sm text-slate-600">
-                <span className="font-mono">{outcome.code}</span> · {formatQuantity(String(inBill(outcome.product)))} in this bill
+                <span className="font-mono">{outcome.code}</span> · {t("barcode.inThisBill", { quantity: formatQuantity(String(inBill(outcome.product))) })}
               </div>
             </div>
             <div className="whitespace-nowrap text-right">
               <div className="text-xl font-semibold tabular-nums text-slate-900">{formatINR(outcome.product.price)}</div>
-              <div className="text-xs text-slate-500">per {outcome.product.unit}</div>
+              <div className="text-xs text-slate-500">{t("barcode.per", { unit: outcome.product.unit })}</div>
             </div>
           </div>
         )}
@@ -170,15 +172,14 @@ export function BarcodeScan({ products, cartItems, onAdd, onRefresh, onClose, sc
               <span className="font-mono">{outcome.code}</span> · {outcome.detail}
             </div>
             <button type="button" onClick={onClose} className="mt-2 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-800 hover:bg-red-50">
-              Search products instead
+              {t("barcode.searchInstead")}
             </button>
           </div>
         )}
       </div>
 
       <p role="note" className="order-6 mt-3 text-xs text-slate-500">
-        Scan with this device's camera, or with any USB or Bluetooth scanner that types like a keyboard. Change
-        quantities in the bill. Camera pictures are read on this device and are never uploaded.
+        {t("barcode.note")}
       </p>
     </section>
   );

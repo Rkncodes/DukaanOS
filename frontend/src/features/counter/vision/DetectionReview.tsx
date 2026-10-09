@@ -1,5 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState, type Dispatch, type SetStateAction } from "react";
+import { useTranslation } from "../../../i18n";
 import type { Schemas } from "../../../lib/api/client";
 import { formatINR } from "../../../lib/format";
 import { searchProducts } from "../bill";
@@ -21,6 +22,7 @@ type Props = {
  * Undecided or unmatched detections are never added.
  */
 export function DetectionReview({ rows, setRows, products, emptyText, onConfirm, onConfirmed }: Props) {
+  const { t, problem } = useTranslation();
   const confirm = useMutation({ mutationFn: onConfirm, onSuccess: onConfirmed });
   const update = (id: string, patch: Partial<ReviewRow>) =>
     setRows((current) => current.map((r) => (r.detection.id === id ? { ...r, ...patch } : r)));
@@ -29,7 +31,7 @@ export function DetectionReview({ rows, setRows, products, emptyText, onConfirm,
 
   return (
     <div>
-      <h3 className="mb-2 text-sm font-medium text-slate-500">Detected products</h3>
+      <h3 className="mb-2 text-sm font-medium text-slate-500">{t("vision.detected")}</h3>
       {rows.length === 0 ? (
         <p className="text-sm text-slate-500">{emptyText}</p>
       ) : (
@@ -49,12 +51,12 @@ export function DetectionReview({ rows, setRows, products, emptyText, onConfirm,
 
       {confirm.error && (
         <p role="alert" className="mt-3 text-sm text-red-600">
-          {confirm.error.message}
+          {problem(confirm.error)}
         </p>
       )}
       <div className="mt-4 flex items-center justify-between gap-3">
         <span className="text-xs text-slate-500">
-          {plan.skipped > 0 && `${plan.skipped} not matched or not chosen: will not be added.`}
+          {plan.skipped > 0 && t("vision.skipped", { count: plan.skipped })}
         </span>
         <button
           type="button"
@@ -62,7 +64,7 @@ export function DetectionReview({ rows, setRows, products, emptyText, onConfirm,
           onClick={() => confirm.mutate(plan.items)}
           className="shrink-0 rounded-md bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          {confirm.isPending ? "Adding…" : `Add ${plan.items.length} to bill`}
+          {confirm.isPending ? t("review.adding") : t("review.addToBill", { count: plan.items.length })}
         </button>
       </div>
     </div>
@@ -82,14 +84,15 @@ function DetectionRow({
   onChange: (patch: Partial<ReviewRow>) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const { detection, product, quantity } = row;
-  const label = detection.label ?? detection.barcode ?? "Unknown item";
+  const label = detection.label ?? detection.barcode ?? t("vision.unknownItem");
   const confidence = detection.confidence === null ? null : Math.round(detection.confidence * 100);
   const decided = product !== null;
   const wasChoice = detection.match !== "matched";
 
   return (
-    <li className="py-3" aria-label={`Detection ${index}: ${label}`}>
+    <li className="py-3" aria-label={t("vision.detection", { index, label })}>
       <div className="flex items-start gap-2">
         <span
           aria-hidden
@@ -99,7 +102,8 @@ function DetectionRow({
         </span>
         <div className="min-w-0 flex-1">
           <div className="text-xs text-slate-500">
-            #{index} seen as “{label}”{confidence !== null && ` · ${confidence}% sure`}
+            {t("vision.seenAs", { index, label })}
+            {confidence !== null && ` · ${t("vision.percentSure", { percent: confidence })}`}
           </div>
           {decided ? (
             <div className="flex items-baseline justify-between gap-2">
@@ -115,7 +119,7 @@ function DetectionRow({
         {decided && (
           <>
             <label className="text-xs text-slate-500" htmlFor={`qty-${detection.id}`}>
-              Qty
+              {t("vision.qty")}
             </label>
             <input
               id={`qty-${detection.id}`}
@@ -133,13 +137,13 @@ function DetectionRow({
                 onClick={() => onChange({ product: null })}
                 className="text-xs text-slate-500 hover:text-slate-800"
               >
-                Change
+                {t("review.change")}
               </button>
             )}
           </>
         )}
         <button type="button" onClick={onRemove} className="ml-auto text-xs text-slate-400 hover:text-red-600">
-          Remove
+          {t("common.remove")}
         </button>
       </div>
     </li>
@@ -148,16 +152,17 @@ function DetectionRow({
 
 /** Undecided detection: pick a candidate, or search the catalog for an unmatched one. */
 function Resolve({ row, products, onPick }: { row: ReviewRow; products: Product[]; onPick: (p: Product) => void }) {
+  const { t } = useTranslation();
   const { detection } = row;
   const [query, setQuery] = useState("");
   const results = query.trim() ? searchProducts(query, products).slice(0, 5) : [];
 
   const prompt =
     detection.match === "low_confidence"
-      ? "Not sure. Is it this?"
+      ? t("review.notSure")
       : detection.match === "ambiguous"
-        ? "Which product is it?"
-        : "Not matched to your catalog";
+        ? t("review.which")
+        : t("vision.notMatched");
 
   return (
     <div>
@@ -172,8 +177,8 @@ function Resolve({ row, products, onPick }: { row: ReviewRow; products: Product[
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search catalog…"
-        aria-label={`Find product for ${detection.label ?? "detection"}`}
+        placeholder={t("vision.searchCatalog")}
+        aria-label={t("review.findFor", { text: detection.label ?? t("vision.aDetection") })}
         className="mt-2 w-full rounded border border-slate-300 px-2 py-1 text-sm"
       />
       {results.length > 0 && (

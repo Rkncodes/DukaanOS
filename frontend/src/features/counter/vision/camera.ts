@@ -3,6 +3,8 @@
  * never touches camera/canvas APIs directly (and tests can replace frame capture).
  */
 
+import { translate } from "../../../i18n";
+
 export type CameraProblem = "unsupported" | "denied" | "not_found" | "failed";
 
 export class CameraError extends Error {
@@ -17,7 +19,7 @@ export class CameraError extends Error {
 
 export async function openCamera(): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw new CameraError("unsupported", "This browser can't open the camera here. Use a current browser on localhost or HTTPS.");
+    throw new CameraError("unsupported", translate("camera.unsupported"));
   }
   try {
     return await navigator.mediaDevices.getUserMedia({
@@ -27,15 +29,12 @@ export async function openCamera(): Promise<MediaStream> {
   } catch (e) {
     const name = e instanceof DOMException || e instanceof Error ? e.name : "";
     if (name === "NotAllowedError" || name === "SecurityError") {
-      throw new CameraError(
-        "denied",
-        "Camera permission was denied. Allow camera access for this site in your browser, then try again.",
-      );
+      throw new CameraError("denied", translate("camera.denied"));
     }
     if (name === "NotFoundError" || name === "OverconstrainedError") {
-      throw new CameraError("not_found", "No camera was found on this device.");
+      throw new CameraError("not_found", translate("camera.notFound"));
     }
-    throw new CameraError("failed", "Could not start the camera. Close other apps using it and try again.");
+    throw new CameraError("failed", translate("camera.failed"));
   }
 }
 

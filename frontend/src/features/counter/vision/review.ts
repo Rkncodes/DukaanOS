@@ -1,3 +1,4 @@
+import { translate } from "../../../i18n";
 import type { Schemas } from "../../../lib/api/client";
 
 export type Detection = Schemas["Detection"];
@@ -8,9 +9,9 @@ export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 export const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export function imageFileError(file: File): string | null {
-  if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) return "Choose a JPEG, PNG or WebP photo.";
-  if (file.size === 0) return "That file is empty.";
-  if (file.size > MAX_IMAGE_BYTES) return "Photo is larger than 8 MB.";
+  if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) return translate("image.wrongType");
+  if (file.size === 0) return translate("image.empty");
+  if (file.size > MAX_IMAGE_BYTES) return translate("image.tooLarge");
   return null;
 }
 

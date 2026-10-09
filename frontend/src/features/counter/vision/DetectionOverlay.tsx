@@ -1,19 +1,24 @@
 import type { ReactNode } from "react";
+import { translate, useTranslation } from "../../../i18n";
 import { formatINR } from "../../../lib/format";
 import type { Detection } from "./review";
 
-/** What to call a detection, and its price, given how it matched this merchant's catalog. */
+/**
+ * What to call a detection, and its price, given how it matched this merchant's catalog. What the
+ * recogniser read (`label`, `barcode`) and product names are data and stay as they are; the notes are
+ * in the app's language (callers are components that re-render when it changes).
+ */
 export function describeDetection(d: Detection): { title: string; price: string | null; note: string | null } {
-  const seen = d.label ?? d.barcode ?? "item";
+  const seen = d.label ?? d.barcode ?? translate("vision.item");
   switch (d.match) {
     case "matched":
       return { title: d.product!.name, price: d.product!.price, note: null };
     case "low_confidence":
-      return { title: d.candidates[0].name, price: d.candidates[0].price, note: "unsure" };
+      return { title: d.candidates[0].name, price: d.candidates[0].price, note: translate("vision.unsure") };
     case "ambiguous":
-      return { title: seen, price: null, note: `${d.candidates.length} options` };
+      return { title: seen, price: null, note: translate("vision.options", { count: d.candidates.length }) };
     default:
-      return { title: seen, price: null, note: "not in catalog" };
+      return { title: seen, price: null, note: translate("vision.notInCatalog") };
   }
 }
 
@@ -40,8 +45,9 @@ export function DetectionOverlay({
   /** Optional per-box status from the caller (e.g. live tracking: "in bill", "leaving"). */
   annotate?: (detection: Detection, index: number) => BoxAnnotation;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="pointer-events-none absolute inset-0" aria-label="Detections" role="list">
+    <div className="pointer-events-none absolute inset-0" aria-label={t("vision.detections")} role="list">
       {detections.map((d, i) => {
         if (!d.bbox) return null;
         const { title, price, note } = describeDetection(d);
@@ -52,7 +58,7 @@ export function DetectionOverlay({
           <div
             key={d.id}
             role="listitem"
-            aria-label={`Box ${i + 1}: ${title}`}
+            aria-label={t("vision.box", { index: i + 1, title })}
             data-match={d.match}
             data-faded={faded ? "true" : undefined}
             className={`absolute border-2 transition-opacity ${border} ${faded ? "border-dashed opacity-40" : ""}`}

@@ -3,7 +3,12 @@
  * browser records and transcribes, and only the transcript is sent to DukaanOS.
  * Not every browser has it (Chrome, Edge and Safari do; Firefox does not), so callers must
  * handle `speechRecognition()` returning null.
+ *
+ * The language spoken here is the merchant's choice for Voice Billing only; it is separate from the
+ * app's display language (../../../i18n), and neither changes the other.
  */
+
+import { translate } from "../../../i18n";
 
 type RecognitionResult = { isFinal: boolean; 0: { transcript: string } };
 
@@ -69,21 +74,21 @@ export function speechRecognition(): (new () => Recognizer) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-/** SpeechRecognitionErrorEvent.error -> what the merchant can do about it. */
+/** SpeechRecognitionErrorEvent.error -> what the merchant can do about it, in the app's language. */
 export function speechErrorMessage(code: string): string {
   switch (code) {
     case "not-allowed":
     case "service-not-allowed":
-      return "Microphone access was blocked. Allow the microphone for this site in the browser, then try again.";
+      return translate("voice.error.blocked");
     case "audio-capture":
-      return "No microphone was found. Connect one, then try again.";
+      return translate("voice.error.noMicrophone");
     case "no-speech":
-      return "Nothing was heard. Try again and speak your items.";
+      return translate("voice.error.noSpeech");
     case "network":
-      return "Speech recognition could not reach the browser's speech service. Check the internet connection, then try again.";
+      return translate("voice.error.network");
     case "language-not-supported":
-      return "This browser cannot recognise speech in the chosen language. Choose another language, or type the items instead.";
+      return translate("voice.error.language");
     default:
-      return "Speech recognition failed. Try again.";
+      return translate("voice.error.failed");
   }
 }

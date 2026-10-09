@@ -206,12 +206,12 @@ describe("app language and Voice Billing's language", () => {
       expect(localStorage.getItem(VOICE_KEY)).toBeNull(); // choosing the app language set nothing for Voice
 
       await act(() => router.navigate("/counter/voice"));
-      // The app is in Tamil; Voice still listens in its own default, English.
-      const voice = (await screen.findByLabelText("Language")) as HTMLSelectElement;
+      // The app is in Tamil, Voice's own controls too; Voice still listens in its own default, English.
+      const voice = (await screen.findByLabelText(translateIn("ta", "voice.language"))) as HTMLSelectElement;
       expect(voice.value).toBe("en");
-      await user.click(screen.getByRole("button", { name: "Tap to speak" }));
+      await user.click(screen.getByRole("button", { name: translateIn("ta", "voice.tapToSpeak") }));
       expect(Recognition.made.at(-1)!.lang).toBe("en-IN");
-      await user.click(screen.getByRole("button", { name: "Stop" }));
+      await user.click(screen.getByRole("button", { name: translateIn("ta", "voice.stop") }));
 
       // Choosing Hindi for Voice does not change the app's language.
       await user.selectOptions(voice, "hi");

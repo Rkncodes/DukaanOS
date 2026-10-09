@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../../../app/icons";
+import { useTranslation } from "../../../i18n";
 import { CameraError, openCamera, stopStream } from "../vision/camera";
 import type { Decoder } from "./scanner";
 
@@ -26,6 +27,7 @@ type Props = {
  * this leaves the page. One read is one product: scanning pauses on a barcode until "Scan next product".
  */
 export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
+  const { t } = useTranslation();
   const [phase, setPhase] = useState<Phase>({ name: "off" });
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -59,7 +61,7 @@ export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
       } catch {
         if (session !== sessionRef.current) return;
         release();
-        setPhase({ name: "error", message: "The barcode reader stopped working. Start the camera again, or type the barcode." });
+        setPhase({ name: "error", message: t("barcode.readerStopped") });
         return;
       }
       if (session !== sessionRef.current) return;
@@ -68,7 +70,7 @@ export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
         await onDetectedRef.current(reading.code);
         return;
       }
-      if (reading.kind === "several") setPhase({ name: "scanning", hint: "More than one barcode is in view. Show one at a time." });
+      if (reading.kind === "several") setPhase({ name: "scanning", hint: t("barcode.severalInView") });
       look(session);
     }, scanEveryMs);
   }
@@ -89,7 +91,7 @@ export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
         track.addEventListener("ended", () => {
           if (session !== sessionRef.current) return;
           release();
-          setPhase({ name: "error", message: "The camera stopped. Start it again, or type the barcode." });
+          setPhase({ name: "error", message: t("barcode.cameraStopped") });
         }),
       );
       const video = videoRef.current;
@@ -108,8 +110,8 @@ export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
         name: "error",
         message:
           error instanceof CameraError
-            ? `${error.message} You can still type the barcode below.`
-            : "The barcode reader could not be loaded. You can still type the barcode below.",
+            ? t("barcode.cameraProblem", { message: error.message })
+            : t("barcode.readerNotLoaded"),
       });
     }
   }
@@ -127,10 +129,10 @@ export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
   const live = phase.name === "scanning" || phase.name === "read" || phase.name === "starting";
 
   return (
-    <div aria-label="Camera scanner" role="group">
+    <div aria-label={t("barcode.cameraScanner")} role="group">
       {/* The video element stays mounted so the stream can be attached before the first frame shows. */}
       <div className={live ? "relative overflow-hidden rounded-xl bg-slate-900" : "hidden"}>
-        <video ref={videoRef} aria-label="Barcode camera" muted playsInline className="block max-h-[22rem] min-h-56 w-full object-cover" />
+        <video ref={videoRef} aria-label={t("barcode.camera")} muted playsInline className="block max-h-[22rem] min-h-56 w-full object-cover" />
         {/* The guide: hold the barcode inside it. Reading works anywhere in the picture. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <div
@@ -142,10 +144,10 @@ export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
           </div>
         </div>
         {live && (
-          <p aria-label="Camera status" className="absolute inset-x-0 bottom-0 bg-slate-900/70 px-3 py-2 text-center text-sm text-white">
-            {phase.name === "starting" && "Starting camera… Allow camera access if your browser asks."}
-            {phase.name === "scanning" && (phase.hint ?? "Hold the product's barcode inside the frame.")}
-            {phase.name === "read" && `Read ${phase.code}`}
+          <p aria-label={t("barcode.cameraStatus")} className="absolute inset-x-0 bottom-0 bg-slate-900/70 px-3 py-2 text-center text-sm text-white">
+            {phase.name === "starting" && t("camera.starting")}
+            {phase.name === "scanning" && (phase.hint ?? t("barcode.hold"))}
+            {phase.name === "read" && t("barcode.read", { code: phase.code })}
           </p>
         )}
       </div>
@@ -164,21 +166,21 @@ export function CameraScan({ onDetected, scanEveryMs = SCAN_EVERY_MS }: Props) {
             className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
           >
             <Icon name="camera" className="h-5 w-5" />
-            {phase.name === "error" ? "Try camera again" : "Start camera"}
+            {phase.name === "error" ? t("barcode.tryCamera") : t("barcode.startCamera")}
           </button>
         )}
         {phase.name === "read" && (
           <button type="button" onClick={next} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
-            Scan next product
+            {t("barcode.scanNext")}
           </button>
         )}
         {live && (
           <button type="button" onClick={stop} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-            Stop camera
+            {t("camera.stop")}
           </button>
         )}
         {!live && phase.name !== "error" && (
-          <span className="text-sm text-slate-500">Uses this device's camera. Pictures stay on this device.</span>
+          <span className="text-sm text-slate-500">{t("barcode.cameraNote")}</span>
         )}
       </div>
     </div>

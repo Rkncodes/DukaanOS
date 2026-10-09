@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { translate, useTranslation } from "../../../i18n";
 import type { Schemas } from "../../../lib/api/client";
 import { formatINR, formatQuantity } from "../../../lib/format";
 import { addReferencePhoto, recognizeFrame } from "./api";
@@ -33,6 +34,7 @@ type Props = {
  * commits a product deliberately; repeated frames never add it again.
  */
 export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INTERVAL_MS }: Props) {
+  const { t, problem } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nextSequence = useRef(0);
@@ -66,7 +68,7 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
       },
       (e: unknown) => {
         if (cancelled) return;
-        setCameraError(e instanceof CameraError ? e.message : "Could not start the camera.");
+        setCameraError(e instanceof CameraError ? e.message : translate("camera.couldNotStart"));
         setPhase("error");
       },
     );
@@ -99,7 +101,7 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
           setScanError(null);
         }
       } catch (e) {
-        if (!stopped) setScanError(e instanceof Error ? e.message : "Recognition failed");
+        if (!stopped) setScanError(e instanceof Error ? problem(e) : t("live.recognitionFailed"));
       }
       if (!stopped) timer = setTimeout(tick, scanIntervalMs);
     };
@@ -123,7 +125,7 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
       const commits = new Map(plan.map((p) => [p.track.key, p.quantity]));
       setTracks((current) => markCommitted(current, commits, cart));
     } catch (e) {
-      setCommitError(e instanceof Error ? e.message : "Could not add to the bill");
+      setCommitError(e instanceof Error ? problem(e) : t("live.couldNotAdd"));
     } finally {
       setCommitting(false);
     }
@@ -141,12 +143,12 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
     setCommitError(null);
     try {
       const photo = await captureRegion(video, track.detection.bbox);
-      if (!photo) throw new Error("The camera has no picture yet. Try again.");
+      if (!photo) throw new Error(t("live.noPicture"));
       await addReferencePhoto(chosen.id, photo);
       setTaught((t) => ({ ...t, [key]: "saved" }));
     } catch (e) {
       setTaught((t) => Object.fromEntries(Object.entries(t).filter(([k]) => k !== key)));
-      setCommitError(e instanceof Error ? e.message : "Could not save the reference photo");
+      setCommitError(e instanceof Error ? problem(e) : t("live.couldNotSave"));
     }
   }
 
@@ -161,12 +163,12 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
   const boxes = tracks.map((t) => ({ ...t.detection, id: t.key }));
 
   return (
-    <section aria-label="Vision counter" className="rounded-xl border border-slate-200 bg-white p-4">
+    <section aria-label={t("counter.mode.live.name")} className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-slate-900">
-          Vision counter{" "}
+          {t("counter.mode.live.name")}{" "}
           {phase === "live" && (
-            <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 align-middle text-xs font-medium text-emerald-700">● Live</span>
+            <span className="ml-1 rounded-full bg-emerald-50 px-2 py-0.5 align-middle text-xs font-medium text-emerald-700">● {t("live.live")}</span>
           )}
         </h2>
         <button
@@ -174,7 +176,7 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
           onClick={stop}
           className="rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
         >
-          Stop camera
+          {t("camera.stop")}
         </button>
       </div>
 
@@ -186,12 +188,12 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
             onClick={() => setAttempt((n) => n + 1)}
             className="mt-3 rounded-md bg-red-700 px-3 py-1.5 font-medium text-white hover:bg-red-800"
           >
-            Try again
+            {t("common.tryAgain")}
           </button>
         </div>
       ) : (
         <div className="relative w-full overflow-hidden rounded-xl bg-slate-900 ring-1 ring-slate-900/10">
-          <video ref={videoRef} aria-label="Live camera" muted playsInline className="block min-h-64 w-full lg:min-h-[24rem]" />
+          <video ref={videoRef} aria-label={t("live.camera")} muted playsInline className="block min-h-64 w-full lg:min-h-[24rem]" />
           <DetectionOverlay
             detections={boxes}
             detailed
@@ -201,13 +203,13 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
               const inBill = product ? quantityInBill(cart, product.id) : 0;
               return {
                 faded: t.status === "leaving",
-                tag: t.status === "leaving" ? "leaving" : inBill > 0 ? `✓ in bill ×${inBill}` : undefined,
+                tag: t.status === "leaving" ? translate("live.leaving") : inBill > 0 ? `✓ ${translate("live.inBill", { count: inBill })}` : undefined,
               };
             }}
           />
           {phase === "starting" && (
             <p role="status" className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-white">
-              Starting camera… Allow camera access if your browser asks.
+              {t("camera.starting")}
             </p>
           )}
         </div>
@@ -216,15 +218,21 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
       {provider?.isMock && (
         <div className="mt-3">
           <MockNotice>
-            <strong>Test provider — not real recognition.</strong> Provider <code>{provider.name}</code> reports itself
-            as a mock; its detections do not come from the camera image.
+            <strong>{t("live.mockTitle")}</strong>{" "}
+            {/* The provider's name is the backend's identifier: shown as it is, in code type. */}
+            {t("live.mockDetail").split("{{provider}}").map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 && <code>{provider.name}</code>}
+                {part}
+              </Fragment>
+            ))}
           </MockNotice>
         </div>
       )}
       {provider && !provider.isMock && (
-        <p className="mt-3 text-xs text-slate-500" role="note" aria-label="Vision provider">
-          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700">Live model</span>{" "}
-          <code>{provider.name}</code> · recognizing from the camera image
+        <p className="mt-3 text-xs text-slate-500" role="note" aria-label={t("live.provider")}>
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-700">{t("live.model")}</span>{" "}
+          <code>{provider.name}</code> · {t("live.fromCamera")}
         </p>
       )}
       {scanError && (
@@ -236,13 +244,13 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
       {phase !== "error" && (
         <>
           <div className="mb-1 mt-4 flex items-baseline justify-between">
-            <h3 className="text-sm font-semibold text-slate-700">On the counter now</h3>
-            <span className="text-xs text-slate-400">Nothing is billed until you add it.</span>
+            <h3 className="text-sm font-semibold text-slate-700">{t("live.onCounterNow")}</h3>
+            <span className="text-xs text-slate-400">{t("live.nothingBilled")}</span>
           </div>
           {tracks.length === 0 ? (
-            <p className="text-sm text-slate-400">{phase === "live" ? "Looking for products…" : "—"}</p>
+            <p className="text-sm text-slate-400">{phase === "live" ? t("live.looking") : "—"}</p>
           ) : (
-            <ul aria-label="On the counter" className="divide-y divide-slate-100">
+            <ul aria-label={t("live.onCounter")} className="divide-y divide-slate-100">
               {tracks.map((t) => (
                 <TrackRow
                   key={t.key}
@@ -268,7 +276,7 @@ export function LiveVision({ cart, onConfirm, onClose, scanIntervalMs = SCAN_INT
             onClick={() => void commit(ready)}
             className="mt-3 w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
-            {committing ? "Adding…" : `Add all ready (${ready.length})`}
+            {committing ? t("review.adding") : t("live.addAllReady", { count: ready.length })}
           </button>
         </>
       )}
@@ -293,6 +301,7 @@ function TrackRow({
   taught: "saving" | "saved" | undefined;
   onTeach: () => void;
 }) {
+  const { t } = useTranslation();
   const d = track.detection;
   const product = billProduct(track);
   const { title, note } = describeDetection(d);
@@ -304,24 +313,24 @@ function TrackRow({
 
   let action: ReactNode;
   if (leaving) {
-    action = <span className="text-xs text-slate-400">Leaving view</span>;
+    action = <span className="text-xs text-slate-400">{t("live.leavingView")}</span>;
   } else if (d.match === "unmatched") {
-    action = <span className="text-xs text-slate-500">Not in catalog · won't be added</span>;
+    action = <span className="text-xs text-slate-500">{t("live.notInCatalog")}</span>;
   } else if (!product) {
     action = (
       <div className="flex flex-wrap justify-end gap-1">
         <span className="w-full text-right text-xs text-amber-700">
-          {d.match === "low_confidence" ? "Unsure. Confirm to add:" : "Which product is it?"}
+          {d.match === "low_confidence" ? t("live.unsureConfirm") : t("review.which")}
         </span>
         {d.candidates.map((c) => (
           <button
             key={c.id}
             type="button"
             onClick={() => onChoose(c)}
-            aria-label={d.match === "low_confidence" ? `Yes, it's ${c.name}` : `Choose ${c.name}`}
+            aria-label={d.match === "low_confidence" ? t("live.yesIts", { name: c.name }) : t("live.choose", { name: c.name })}
             className="rounded-full border border-slate-300 px-2 py-0.5 text-xs hover:border-emerald-500 hover:bg-emerald-50"
           >
-            {d.match === "low_confidence" ? `Yes, it's ${c.name}` : `${c.name} · ${formatINR(c.price)}`}
+            {d.match === "low_confidence" ? t("live.yesIts", { name: c.name }) : `${c.name} · ${formatINR(c.price)}`}
           </button>
         ))}
       </div>
@@ -333,29 +342,29 @@ function TrackRow({
         type="button"
         disabled={busy}
         onClick={onAdd}
-        aria-label={`Add ${formatQuantity(String(remaining))} ${product.name} to bill`}
+        aria-label={t("live.addQuantity", { quantity: formatQuantity(String(remaining)), name: product.name })}
         className="rounded-md bg-emerald-600 px-3 py-1 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
       >
-        {more ? `Add ${remaining} more` : `Add ×${remaining}`}
+        {more ? t("live.addMore", { count: remaining }) : t("live.addTimes", { count: remaining })}
       </button>
     );
   } else {
-    action = <span className="text-sm font-medium text-emerald-700">✓ Added</span>;
+    action = <span className="text-sm font-medium text-emerald-700">✓ {t("live.added")}</span>;
   }
 
   return (
     <li
-      aria-label={`${name}${leaving ? " (leaving)" : ""}`}
+      aria-label={leaving ? t("live.leavingNamed", { name }) : name}
       data-status={track.status}
       className={`flex items-start justify-between gap-3 py-2 ${leaving ? "opacity-50" : ""}`}
     >
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           {track.status === "new" && (
-            <span className="rounded bg-emerald-100 px-1 text-[10px] font-semibold uppercase text-emerald-800">New</span>
+            <span className="rounded bg-emerald-100 px-1 text-[10px] font-semibold uppercase text-emerald-800">{t("live.new")}</span>
           )}
           <span className={`truncate font-medium ${d.match === "unmatched" ? "text-slate-500" : "text-slate-900"}`}>
-            {d.match === "unmatched" ? `Unknown: ${title}` : name}
+            {d.match === "unmatched" ? t("live.unknown", { title }) : name}
           </span>
         </div>
         <div className="text-xs text-slate-500">
@@ -364,22 +373,22 @@ function TrackRow({
           {confidence && ` · ${confidence}`}
           {note && !product && ` · ${note}`}
           {basis(d) && ` · ${basis(d)}`}
-          {inBill > 0 && <span className="text-emerald-700"> · in bill ×{inBill}</span>}
+          {inBill > 0 && <span className="text-emerald-700"> · {t("live.inBill", { count: inBill })}</span>}
           {track.chosen && d.match !== "matched" && (
             <>
               <button type="button" onClick={() => onChoose(null)} className="ml-1 underline hover:text-slate-800">
-                change
+                {t("live.change")}
               </button>
               {!leaving && d.bbox && (
                 <button
                   type="button"
                   disabled={taught !== undefined}
                   onClick={onTeach}
-                  aria-label={`Remember this packet as ${track.chosen.name}`}
-                  title="Save how this packet looks, so Vision recognizes it next time"
+                  aria-label={t("live.remember", { name: track.chosen.name })}
+                  title={t("live.rememberHelp")}
                   className="ml-2 underline hover:text-slate-800 disabled:no-underline"
                 >
-                  {taught === "saved" ? "✓ remembered" : taught === "saving" ? "saving…" : "remember this packet"}
+                  {taught === "saved" ? `✓ ${t("live.remembered")}` : taught === "saving" ? t("live.saving") : t("live.rememberThis")}
                 </button>
               )}
             </>
@@ -395,8 +404,8 @@ function TrackRow({
 function basis(d: Detection): string | null {
   const e = d.evidence;
   if (!e || d.match === "unmatched") return null;
-  const parts = [e.text > 0 && "name read on pack", e.reference > 0 && "matches your photo"].filter(Boolean);
-  return parts.length > 0 ? parts.join(" + ") : "by look only";
+  const parts = [e.text > 0 && translate("live.basis.text"), e.reference > 0 && translate("live.basis.reference")].filter(Boolean);
+  return parts.length > 0 ? parts.join(" + ") : translate("live.basis.look");
 }
 
 function resume(video: HTMLVideoElement) {

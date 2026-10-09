@@ -887,6 +887,20 @@ describe("no English is written into these screens", () => {
       "../features/analytics/AnalyticsPage.tsx",
       "../app/charts.tsx",
       "../features/salaahkaar/SalaahkaarPanel.tsx",
+      "../features/auth/AuthPage.tsx",
+      "../features/counter/Receipt.tsx",
+      "../features/counter/paytm/PaytmPay.tsx",
+      "../features/counter/barcode/BarcodeScan.tsx",
+      "../features/counter/barcode/CameraScan.tsx",
+      "../features/counter/vision/LiveVision.tsx",
+      "../features/counter/vision/DetectionOverlay.tsx",
+      "../features/counter/vision/DetectionReview.tsx",
+      "../features/counter/vision/PhotoReview.tsx",
+      "../features/counter/vision/camera.ts",
+      "../features/counter/vision/review.ts",
+      "../features/counter/parchi/ParchiReview.tsx",
+      "../features/counter/voice/VoiceReview.tsx",
+      "../features/counter/voice/speech.ts",
     ],
     { query: "?raw", eager: true, import: "default" },
   ) as Record<string, string>;
@@ -922,9 +936,17 @@ describe("no English is written into these screens", () => {
     expect(writtenInEnglish(sample).sort()).toEqual(["Mark ready", "Not given", "Order ${number}", "Pending", "Phone", "nothing waiting"]);
   });
 
-  /** Text kept as written on purpose: Salaahkaar's example questions show the ways a merchant may type to it. */
+  /**
+   * Text kept as written on purpose: Salaahkaar's example questions (the ways a merchant may type to it), the
+   * product's name, the tax names printed on every Indian bill, the names Voice's languages are known by, and
+   * a type name from the API schema (not text at all).
+   */
   const KEPT: Record<string, string[]> = {
     "../features/salaahkaar/SalaahkaarPanel.tsx": ["Aaj kitni bikri hui?", "Rahul Sharma ka kitna udhaar hai?", "Maggi ka stock kitna hai?", "Which products are low in stock?"],
+    "../features/auth/AuthPage.tsx": ["DukaanOS"],
+    "../features/counter/Receipt.tsx": ["CGST", "SGST"],
+    "../features/counter/voice/speech.ts": ["English", "Hinglish"],
+    "../features/counter/vision/review.ts": ["Detection"],
   };
 
   it.each(Object.keys(sources))("%s", (path) => {
@@ -932,6 +954,6 @@ describe("no English is written into these screens", () => {
   });
 
   it("covers every converted file", () => {
-    expect(Object.keys(sources)).toHaveLength(23);
+    expect(Object.keys(sources)).toHaveLength(37);
   });
 });

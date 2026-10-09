@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "../../i18n";
 import type { Schemas } from "../../lib/api/client";
 import { formatINR, formatQuantity } from "../../lib/format";
-
-const METHOD_LABEL: Record<string, string> = { cash: "Cash", upi: "UPI", card: "Card", paytm: "Paytm" };
 
 /** Shown after checkout: the completed bill and exactly how it was settled. */
 export function Receipt({
@@ -16,6 +15,7 @@ export function Receipt({
   storeGstin?: string | null;
   onNext: () => void;
 }) {
+  const { t, label, dateLocale } = useTranslation();
   const { order, customer, payments, khata_entry, customer_balance } = bill;
   const tax = order.tax_summary;
   const taxed = Number(tax.total_tax) > 0;
@@ -29,16 +29,16 @@ export function Receipt({
       <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center">
         <div className="text-sm text-emerald-800">
           {khata_entry
-            ? "Added to khata"
+            ? t("receipt.addedToKhata")
             : order.payment_status !== "paid"
-              ? "Bill saved"
+              ? t("receipt.billSaved")
               : paytm
-                ? "Payment successful ✓ Verified by Paytm"
-                : "Payment received"}
+                ? `${t("receipt.paymentSuccessful")} ✓ ${t("receipt.verifiedByPaytm")}`
+                : t("receipt.paymentReceived")}
         </div>
         <div className="text-3xl font-bold text-emerald-900">{formatINR(order.total)}</div>
         {paytm?.external_reference && (
-          <div className="mt-1 text-xs text-emerald-800">Paytm reference: {paytm.external_reference}</div>
+          <div className="mt-1 text-xs text-emerald-800">{t("paytm.reference", { reference: paytm.external_reference })}</div>
         )}
       </div>
 
@@ -47,8 +47,8 @@ export function Receipt({
           <div className="font-semibold text-slate-900">{storeName}</div>
           {storeGstin && <div className="text-xs text-slate-500">GSTIN: {storeGstin}</div>}
           <div className="text-xs text-slate-500">
-            Bill #{order.id.slice(0, 8).toUpperCase()} ·{" "}
-            {new Date(order.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+            {t("receipt.billNumber", { number: order.id.slice(0, 8).toUpperCase() })} ·{" "}
+            {new Date(order.created_at).toLocaleString(dateLocale, { dateStyle: "medium", timeStyle: "short" })}
           </div>
           {customer && <div className="mt-1 text-slate-700">{customer.name}</div>}
         </header>
@@ -70,21 +70,22 @@ export function Receipt({
         </table>
 
         <dl className="mt-3 space-y-1 border-t border-dashed border-slate-300 pt-3">
-          <Row label="Subtotal" value={formatINR(order.subtotal)} />
-          {Number(order.discount) > 0 && <Row label="Discount" value={`− ${formatINR(order.discount)}`} />}
-          <Row label="Total" value={formatINR(order.total)} strong />
+          <Row label={t("cart.subtotal")} value={formatINR(order.subtotal)} />
+          {Number(order.discount) > 0 && <Row label={t("cart.discount")} value={`− ${formatINR(order.discount)}`} />}
+          <Row label={t("cart.total")} value={formatINR(order.total)} strong />
           {payments.map((p) => (
-            <Row key={p.id} label={`Paid · ${METHOD_LABEL[p.method] ?? p.method}`} value={formatINR(p.amount)} />
+            <Row key={p.id} label={t("receipt.paid", { method: label("cart.method", p.method) })} value={formatINR(p.amount)} />
           ))}
-          {khata_entry && <Row label="On khata (udhaar)" value={formatINR(khata_entry.amount)} />}
+          {khata_entry && <Row label={t("receipt.onKhata")} value={formatINR(khata_entry.amount)} />}
         </dl>
 
         {taxed && (
           <dl className="mt-3 space-y-1 border-t border-dashed border-slate-300 pt-3 text-xs text-slate-500">
-            <Row label="Taxable value" value={formatINR(tax.taxable_value)} />
+            <Row label={t("receipt.taxableValue")} value={formatINR(tax.taxable_value)} />
+            {/* CGST and SGST are the names printed on Indian bills in every language. */}
             <Row label="CGST" value={formatINR(tax.cgst)} />
             <Row label="SGST" value={formatINR(tax.sgst)} />
-            <Row label="Total GST (incl. in price)" value={formatINR(tax.total_tax)} />
+            <Row label={t("receipt.totalGst")} value={formatINR(tax.total_tax)} />
           </dl>
         )}
 
@@ -94,7 +95,7 @@ export function Receipt({
               Number(customer_balance) > 0 ? "bg-red-50 text-red-700" : "bg-slate-50 text-slate-600"
             }`}
           >
-            {customer.name}'s khata balance: <strong>{formatINR(customer_balance)}</strong>
+            {t("receipt.khataBalance", { name: customer.name })} <strong>{formatINR(customer_balance)}</strong>
           </p>
         )}
       </article>
@@ -105,7 +106,7 @@ export function Receipt({
         onClick={onNext}
         className="mt-4 w-full rounded-md bg-emerald-600 py-3 font-semibold text-white hover:bg-emerald-700"
       >
-        New bill
+        {t("receipt.newBill")}
       </button>
     </div>
   );

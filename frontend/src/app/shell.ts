@@ -10,5 +10,3 @@ export type ShellContext = {
 export function useShell(): ShellContext | undefined {
   return useOutletContext<ShellContext | undefined>() ?? undefined;
 }
-
-export const PRODUCT_LINE = "The AI operating system for your kirana store.";
